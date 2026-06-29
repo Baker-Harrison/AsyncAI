@@ -222,6 +222,11 @@
   padding: 16px 0 8px;
   display: flex;
   flex-direction: column;
+  scrollbar-width: none;
+}
+
+.messages-container::-webkit-scrollbar {
+  display: none;
 }
 
 .message {
