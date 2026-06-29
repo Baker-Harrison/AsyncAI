@@ -2,6 +2,7 @@
   "name": "asyncai",
   "version": "1.0.1",
   "description": "Persistent AI agents with their own computers",
+  "author": "Baker-Harrison",
   "main": "src/main/main.js",
   "scripts": {
     "build": "webpack --mode production",
@@ -29,8 +30,7 @@
       "node_modules/sql.js/dist/*.wasm"
     ],
     "win": {
-      "target": "nsis",
-      "icon": "assets/icon.ico"
+      "target": "nsis"
     },
     "nsis": {
       "oneClick": false,
