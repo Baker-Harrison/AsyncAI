@@ -1,5 +1,13 @@
 'use strict';
 
+if (process.env.NODE_ENV === 'development') {
+  require('electron-reload')(__dirname, {
+    electron: require('electron'),
+    watchRenderer: true,
+    forceHardReset: false,
+  });
+}
+
 const { app, BrowserWindow, ipcMain, Menu } = require('electron');
 const path = require('path');
 const fs   = require('fs');
