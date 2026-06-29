@@ -87,8 +87,10 @@ async function buildHarness(agent) {
     containerName: containerName(agent.id),
     agentName:     agent.name,
     history:       messages,
-    onEvent: (event) => mainWindow?.webContents.send('agent-event', { agentId: agent.id, ...event }),
-    saveMessage: (msg) => db.addMessage({ agentId: agent.id, ...msg }),
+    onEvent:       (event) => mainWindow?.webContents.send('agent-event', { agentId: agent.id, ...event }),
+    saveMessage:   (msg)   => db.addMessage({ agentId: agent.id, ...msg }),
+    addMemory:     (mem)   => db.addMemory(mem),
+    searchMemories:(query) => db.searchMemories(agent.id, query),
   });
   harnesses.set(agent.id, harness);
   return harness;

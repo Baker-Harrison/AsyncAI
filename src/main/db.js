@@ -44,6 +44,13 @@ async function getDb() {
       tool_status  TEXT,
       created_at   INTEGER NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS memories (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      agent_id   TEXT    NOT NULL,
+      content    TEXT    NOT NULL,
+      created_at INTEGER NOT NULL
+    );
   `);
 
   persist();
@@ -105,4 +112,28 @@ async function getMessages(agentId) {
   return rows;
 }
 
-module.exports = { createAgent, listAgents, addMessage, getMessages };
+// ── Memories ────────────────────────────────────────────────────────────────
+
+async function addMemory({ agentId, content }) {
+  const d = await getDb();
+  d.run('INSERT INTO memories (agent_id, content, created_at) VALUES (?, ?, ?)', [agentId, content, Date.now()]);
+  persist();
+}
+
+async function searchMemories(agentId, query) {
+  const d = await getDb();
+  // Match any memory containing at least one query keyword (case-insensitive)
+  const keywords = query.toLowerCase().split(/\s+/).filter(Boolean);
+  const stmt = d.prepare('SELECT * FROM memories WHERE agent_id = ? ORDER BY created_at DESC');
+  stmt.bind([agentId]);
+  const rows = [];
+  while (stmt.step()) {
+    const row = stmt.getAsObject();
+    const text = row.content.toLowerCase();
+    if (keywords.some((kw) => text.includes(kw))) rows.push(row);
+  }
+  stmt.free();
+  return rows;
+}
+
+module.exports = { createAgent, listAgents, addMessage, getMessages, addMemory, searchMemories };

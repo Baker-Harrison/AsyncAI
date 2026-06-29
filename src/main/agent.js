@@ -67,24 +67,54 @@ const TOOLS = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'remember',
+      description: 'Save a fact, preference, or piece of context to long-term memory. Use this for anything important you learn about the user, their projects, or preferences — so you can recall it in future conversations.',
+      parameters: {
+        type: 'object',
+        properties: { content: { type: 'string', description: 'The fact or context to remember. Be specific and self-contained — write it as if you\'ll read it cold later with no surrounding context.' } },
+        required: ['content'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'recall',
+      description: 'Search your long-term memory for information relevant to a query. Always use this before making assumptions about the user, their projects, or preferences. If no memories match, say you don\'t know and ask the user.',
+      parameters: {
+        type: 'object',
+        properties: { query: { type: 'string', description: 'Keywords or a short phrase describing what you\'re looking for.' } },
+        required: ['query'],
+      },
+    },
+  },
 ];
 
 const systemPrompt = (name) =>
   `You are ${name}, a capable AI assistant with your own computer. ` +
   `Use your tools to get things done — run commands, write code, browse with curl, work with git and GitHub, manage files, whatever the user needs. ` +
-  `Be direct and capable. Your home directory is /home/agent.`;
+  `Your home directory is /home/agent.\n\n` +
+  `## Memory rules\n` +
+  `- Use \`recall\` whenever you're uncertain about something the user may have told you before.\n` +
+  `- Use \`remember\` to save anything important you learn — facts about the user, their projects, preferences, credentials, decisions.\n` +
+  `- If \`recall\` returns no matches, say you don't know and ask the user. Never guess or make up context.`;
 
 // ── AgentHarness ───────────────────────────────────────────────────────────
 
 class AgentHarness {
-  constructor({ agentId, containerName, agentName, history, onEvent, saveMessage }) {
-    this.agentId       = agentId;
-    this.containerName = containerName;
-    this.agentName     = agentName;
-    this.onEvent       = onEvent;
-    this.saveMessage   = saveMessage;
-    this._running      = false;
-    this._aborted      = false;
+  constructor({ agentId, containerName, agentName, history, onEvent, saveMessage, addMemory, searchMemories }) {
+    this.agentId         = agentId;
+    this.containerName   = containerName;
+    this.agentName       = agentName;
+    this.onEvent         = onEvent;
+    this.saveMessage     = saveMessage;
+    this.addMemory       = addMemory;
+    this.searchMemories  = searchMemories;
+    this._running        = false;
+    this._aborted        = false;
 
     // Reconstruct model history from persisted DB messages
     this.modelHistory = history.map((m) => JSON.parse(m.model_json));
@@ -220,12 +250,27 @@ class AgentHarness {
 
   async _executeTool(name, params) {
     switch (name) {
-      case 'bash':  return this._bash(params.command);
-      case 'read':  return this._read(params.path);
-      case 'write': return this._write(params.path, params.content);
-      case 'edit':  return this._edit(params.path, params.old_str, params.new_str);
+      case 'bash':     return this._bash(params.command);
+      case 'read':     return this._read(params.path);
+      case 'write':    return this._write(params.path, params.content);
+      case 'edit':     return this._edit(params.path, params.old_str, params.new_str);
+      case 'remember': return this._remember(params.content);
+      case 'recall':   return this._recall(params.query);
       default: throw new Error(`Unknown tool: ${name}`);
     }
+  }
+
+  async _remember(content) {
+    await this.addMemory({ agentId: this.agentId, content });
+    return `Saved to memory: "${content}"`;
+  }
+
+  async _recall(query) {
+    const matches = await this.searchMemories(this.agentId, query);
+    if (matches.length === 0) {
+      return `No memories found matching "${query}". You do not know this — ask the user.`;
+    }
+    return matches.map((m, i) => `[${i + 1}] ${m.content}`).join('\n');
   }
 
   async _bash(command) {
