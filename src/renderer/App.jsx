@@ -180,11 +180,11 @@ function App() {
             isThinking={isThinking}
             onNewAgent={() => setShowModal(true)}
           />
-          {activeAgent && (
+          {activeAgent && activeAgent.status !== 'starting' && (
             <MessageInput
               onSend={handleSend}
-              disabled={inputDisabled}
-              placeholder={inputPlaceholder}
+              disabled={isThinking}
+              placeholder={isThinking ? 'Agent is thinking…' : 'Message your agent…'}
             />
           )}
         </div>

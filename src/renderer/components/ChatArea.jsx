@@ -38,14 +38,32 @@ function ChatArea({ agent, isThinking, onNewAgent }) {
     );
   }
 
+  if (agent.status === 'starting') {
+    return (
+      <div className="chat-area">
+        <div className="chat-header">
+          <div className="header-title-group">
+            <h2 className="channel-title">{agent.name}</h2>
+          </div>
+        </div>
+        <div className="starting-screen">
+          <div className="starting-ring">
+            <svg viewBox="0 0 100 100" className="starting-svg">
+              <circle cx="50" cy="50" r="42" className="ring-track" />
+              <circle cx="50" cy="50" r="42" className="ring-arc" />
+            </svg>
+          </div>
+          <p className="starting-label">Starting computer…</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="chat-area">
       <div className="chat-header">
         <div className="header-title-group">
           <h2 className="channel-title">{agent.name}</h2>
-          {agent.status === 'starting' && (
-            <span className="header-status">starting computer…</span>
-          )}
         </div>
       </div>
 

@@ -122,7 +122,7 @@ ipcMain.handle('agent:list', async () => {
     return {
       id:       agent.id,
       name:     agent.name,
-      status:   'ready', // optimistic — container startup is handled separately
+      status:   'starting', // will flip to 'ready' once container is confirmed running
       messages: msgs.map(dbMsgToUI).filter(Boolean),
     };
   }));
