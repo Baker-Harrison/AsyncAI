@@ -39,7 +39,9 @@
     "publish": {
       "provider": "github",
       "owner": "Baker-Harrison",
-      "repo": "AsyncAI"
+      "repo": "AsyncAI",
+      "draft": false,
+      "prerelease": false
     }
   },
   "devDependencies": {
