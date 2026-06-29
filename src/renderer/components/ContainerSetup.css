@@ -1,0 +1,119 @@
+/* ── Container setup loading screen ─────────────────────────────────── */
+
+.cs-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  padding: 40px;
+}
+
+/* ── Circular progress ring ──────────────────────────────────────────── */
+
+.cs-ring-wrap {
+  position: relative;
+  width: 96px;
+  height: 96px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cs-svg {
+  width: 96px;
+  height: 96px;
+  position: absolute;
+  inset: 0;
+}
+
+/* Smooth transition on the progress arc fill */
+.cs-svg circle:nth-child(2) {
+  transition: stroke-dasharray 0.6s ease;
+}
+
+@keyframes cs-spin {
+  to { transform: rotate(360deg); }
+}
+
+.cs-spin-arc {
+  transform-origin: 40px 40px;
+  animation: cs-spin 1.4s linear infinite;
+}
+
+.cs-pct {
+  position: relative;
+  font-size: 16px;
+  font-weight: 700;
+  color: #d1d2d3;
+  letter-spacing: -0.5px;
+  transition: opacity 0.3s;
+}
+
+/* ── Heading ─────────────────────────────────────────────────────────── */
+
+.cs-label-main {
+  font-size: 14px;
+  font-weight: 600;
+  color: #8e9094;
+  letter-spacing: 0.1px;
+}
+
+/* ── Step list ───────────────────────────────────────────────────────── */
+
+.cs-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.cs-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  transition: color 0.3s;
+}
+
+.cs-step--done   { color: #3dbb77; }
+.cs-step--active { color: #d1d2d3; }
+.cs-step--pending{ color: #444649; }
+
+.cs-step-icon {
+  width: 14px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.cs-step--done   .cs-step-icon { color: #3dbb77; }
+.cs-step--active .cs-step-icon { color: #1d6aff; font-size: 16px; line-height: 1; }
+.cs-step--pending .cs-step-icon { color: #444649; }
+
+/* ── Animated dots on active step ────────────────────────────────────── */
+
+.cs-step-dots {
+  display: flex;
+  gap: 3px;
+  align-items: center;
+  margin-left: 2px;
+}
+
+.cs-step-dots span {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: #1d6aff;
+  animation: cs-dots 1.2s ease-in-out infinite;
+}
+
+.cs-step-dots span:nth-child(2) { animation-delay: 0.2s; }
+.cs-step-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes cs-dots {
+  0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
+  40%            { opacity: 1;   transform: scale(1.2); }
+}

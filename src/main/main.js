@@ -1,7 +1,14 @@
+'use strict';
+
 const { app, BrowserWindow, ipcMain, Menu } = require('electron');
 const path = require('path');
-const fs = require('fs');
-const { execSync, execFile } = require('child_process');
+const fs   = require('fs');
+const { execFile } = require('child_process');
+const { promisify } = require('util');
+const { AgentHarness } = require('./agent');
+const db = require('./db');
+
+const execFileAsync = promisify(execFile);
 
 // ── Env ────────────────────────────────────────────────────────────────────
 
@@ -12,156 +19,146 @@ if (fs.existsSync(envPath)) {
     if (eq > 0) {
       const k = line.slice(0, eq).trim();
       const v = line.slice(eq + 1).trim();
-      if (k && !process.env[k]) process.env[k] = v;
+      if (k && v && !k.startsWith('#') && !process.env[k]) process.env[k] = v;
     }
   });
 }
 
-// ── Opencode client factory ────────────────────────────────────────────────
-
-let createOpencodeClient = null;
-
-async function getClientFactory() {
-  if (!createOpencodeClient) {
-    ({ createOpencodeClient } = await import('@opencode-ai/sdk/client'));
-  }
-  return createOpencodeClient;
-}
-
-// Maps sessionId → serverUrl so send-message knows which container to hit
-const sessionServers = new Map();
-
-// ── Local opencode connection (for auth setup / fallback) ──────────────────
-
-const DEFAULT_URL = 'http://127.0.0.1:4096';
-let localClient = null;
-
-async function connectLocalOpencode() {
-  try {
-    const factory = await getClientFactory();
-    const probe = factory({ baseUrl: DEFAULT_URL });
-    await probe.session.list();
-    localClient = probe;
-
-    const apiKey = process.env.OPENCODE_API_KEY;
-    if (apiKey) {
-      await localClient.auth.set({
-        path: { id: 'opencode' },
-        body: { type: 'api', key: apiKey },
-      });
-    }
-    console.log('[opencode] connected to local server');
-  } catch (e) {
-    console.warn('[opencode] no local server:', e.message);
-  }
-}
-
-// ── Docker helpers ─────────────────────────────────────────────────────────
+// ── Docker ─────────────────────────────────────────────────────────────────
 
 const PROJECT_ROOT = path.join(__dirname, '..', '..');
-const IMAGE_NAME = 'asyncai-agent';
-const usedPorts = new Set([4096, 4747]);
+const IMAGE_NAME   = 'asyncai-agent';
 
-function nextPort() {
-  let p = 5000;
-  while (usedPorts.has(p)) p++;
-  usedPorts.add(p);
-  return p;
-}
-
-function buildImageIfNeeded() {
+async function buildImageIfNeeded() {
   try {
-    execSync(`docker image inspect ${IMAGE_NAME}`, { stdio: 'ignore' });
-    console.log('[docker] image exists');
+    await execFileAsync('docker', ['image', 'inspect', IMAGE_NAME]);
   } catch {
-    console.log('[docker] building image...');
-    execSync(`docker build -t ${IMAGE_NAME} .`, {
-      cwd: PROJECT_ROOT,
-      stdio: 'inherit',
-    });
+    console.log('[docker] building image…');
+    await execFileAsync('docker', ['build', '-t', IMAGE_NAME, '.'], { cwd: PROJECT_ROOT });
   }
 }
 
-async function waitForContainer(url, timeoutMs = 90000) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    try {
-      const res = await fetch(`${url}/session`);
-      if (res.status < 500) return;
-    } catch {}
-    await new Promise((r) => setTimeout(r, 2000));
-  }
-  throw new Error(`Container at ${url} not ready after ${timeoutMs / 1000}s`);
+function containerName(agentId) {
+  return `asyncai-${agentId}`;
 }
 
-// ── IPC: start container ───────────────────────────────────────────────────
+// Ensure the agent's container exists and is running. Returns when ready.
+async function ensureContainer(agentId) {
+  const name = containerName(agentId);
 
-ipcMain.handle('opencode:start-container', async (_, repo, taskId) => {
-  const factory = await getClientFactory();
-  const apiKey = process.env.OPENCODE_API_KEY;
-  const configJson = JSON.stringify({
-    provider: { opencode: { options: { apiKey } } },
-  });
-
-  buildImageIfNeeded();
-
-  const port = nextPort();
-  const containerName = `asyncai-${taskId}`;
-  const serverUrl = `http://127.0.0.1:${port}`;
-
-  const containerId = execSync(
-    [
-      'docker', 'run', '-d',
-      '--name', containerName,
-      '-p', `${port}:4096`,
-      '-e', `GITHUB_REPO=${repo}`,
-      '-e', `OPENCODE_CONFIG_CONTENT=${configJson}`,
+  // Check if container exists
+  try {
+    const { stdout } = await execFileAsync('docker', ['inspect', '--format', '{{.State.Status}}', name]);
+    const status = stdout.trim();
+    if (status === 'running') return; // already up
+    // Exists but stopped — restart it
+    await execFileAsync('docker', ['start', name]);
+  } catch {
+    // Container doesn't exist — create it
+    await execFileAsync('docker', [
+      'run', '-d', '--name', name,
+      '-e', `GITHUB_TOKEN=${process.env.GITHUB_TOKEN || ''}`,
       IMAGE_NAME,
-    ].join(' ')
-  ).toString().trim();
-
-  console.log(`[docker] container ${containerId.slice(0, 12)} started on port ${port}`);
-
-  await waitForContainer(serverUrl);
-
-  // Set auth explicitly on the container's opencode server
-  const containerClient = factory({ baseUrl: serverUrl });
-  if (apiKey) {
-    await containerClient.auth.set({
-      path: { id: 'opencode' },
-      body: { type: 'api', key: apiKey },
-    });
+    ]);
   }
+}
 
-  // Create the session
-  const sessionResult = await containerClient.session.create();
-  if (sessionResult.error) throw new Error(JSON.stringify(sessionResult.error));
-  const sessionId = sessionResult.data.id;
+async function stopContainer(agentId) {
+  try {
+    await execFileAsync('docker', ['stop', containerName(agentId)]);
+  } catch { /* ignore */ }
+}
 
-  sessionServers.set(sessionId, serverUrl);
+// ── Harness store ──────────────────────────────────────────────────────────
 
-  return { containerId, port, sessionId };
+const harnesses = new Map(); // agentId → AgentHarness
+
+async function buildHarness(agent) {
+  const messages = await db.getMessages(agent.id);
+  const harness = new AgentHarness({
+    agentId:       agent.id,
+    containerName: containerName(agent.id),
+    agentName:     agent.name,
+    history:       messages,
+    onEvent: (event) => mainWindow?.webContents.send('agent-event', { agentId: agent.id, ...event }),
+    saveMessage: (msg) => db.addMessage({ agentId: agent.id, ...msg }),
+  });
+  harnesses.set(agent.id, harness);
+  return harness;
+}
+
+// Convert a DB message row to the shape the renderer expects
+function dbMsgToUI(m) {
+  if (m.role === 'user') {
+    return { id: m.id, role: 'user', text: m.display_text, time: fmtTime(m.created_at) };
+  }
+  if (m.role === 'assistant' && m.display_text) {
+    return { id: m.id, role: 'assistant', text: m.display_text, time: fmtTime(m.created_at) };
+  }
+  if (m.role === 'tool') {
+    return {
+      id:     m.id,
+      role:   'tool',
+      tool:   m.tool_name,
+      params: JSON.parse(m.tool_params || '{}'),
+      output: m.tool_output,
+      status: m.tool_status,
+      time:   fmtTime(m.created_at),
+    };
+  }
+  return null; // assistant-with-only-tool_calls — no UI row needed
+}
+
+function fmtTime(ts) {
+  return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+// ── IPC ────────────────────────────────────────────────────────────────────
+
+ipcMain.handle('agent:list', async () => {
+  const agents = await db.listAgents();
+  return Promise.all(agents.map(async (agent) => {
+    const msgs = await db.getMessages(agent.id);
+    return {
+      id:       agent.id,
+      name:     agent.name,
+      status:   'ready', // optimistic — container startup is handled separately
+      messages: msgs.map(dbMsgToUI).filter(Boolean),
+    };
+  }));
 });
 
-// ── IPC: send message ──────────────────────────────────────────────────────
+ipcMain.handle('agent:create', async (_, { name }) => {
+  const id = `agent-${Date.now()}`;
+  await db.createAgent({ id, name });
 
-ipcMain.handle('opencode:send-message', async (_, sessionId, text) => {
-  const factory = await getClientFactory();
-  const serverUrl = sessionServers.get(sessionId) ?? DEFAULT_URL;
-  const client = factory({ baseUrl: serverUrl });
+  // Fire-and-forget container start; send status events when done
+  const send = (status, error) =>
+    mainWindow?.webContents.send('agent-status', { agentId: id, status, error });
 
-  const result = await client.session.prompt({
-    path: { id: sessionId },
-    body: {
-      model: { providerID: 'opencode', modelID: 'deepseek-v4-flash' },
-      parts: [{ type: 'text', text }],
-    },
-  });
+  send('starting');
+  buildImageIfNeeded()
+    .then(() => ensureContainer(id))
+    .then(async () => {
+      await buildHarness({ id, name });
+      send('ready');
+    })
+    .catch((e) => {
+      console.error('[agent:create] container error:', e.message);
+      send('error', e.message);
+    });
 
-  if (result.error) throw new Error(JSON.stringify(result.error));
+  return { id, name, status: 'starting', messages: [] };
+});
 
-  const textParts = (result.data.parts ?? []).filter((p) => p.type === 'text');
-  return textParts.map((p) => p.text).join('');
+ipcMain.handle('agent:chat', async (_, { agentId, text }) => {
+  const harness = harnesses.get(agentId);
+  if (!harness) throw new Error(`No harness for agent ${agentId}`);
+  await harness.chat(text);
+});
+
+ipcMain.handle('agent:abort', (_, { agentId }) => {
+  harnesses.get(agentId)?.abort();
 });
 
 // ── Window ─────────────────────────────────────────────────────────────────
@@ -182,18 +179,10 @@ function createWindow() {
       contextIsolation: true,
     },
   });
-
   mainWindow.loadFile(path.join(__dirname, '..', '..', 'dist', 'index.html'));
-
-  mainWindow.on('maximize', () =>
-    mainWindow.webContents.send('window-maximized-changed', true)
-  );
-  mainWindow.on('unmaximize', () =>
-    mainWindow.webContents.send('window-maximized-changed', false)
-  );
-  mainWindow.on('closed', () => {
-    mainWindow = null;
-  });
+  mainWindow.on('maximize',   () => mainWindow.webContents.send('window-maximized-changed', true));
+  mainWindow.on('unmaximize', () => mainWindow.webContents.send('window-maximized-changed', false));
+  mainWindow.on('closed',     () => { mainWindow = null; });
 }
 
 ipcMain.on('window-minimize', () => mainWindow?.minimize());
@@ -204,17 +193,42 @@ ipcMain.on('window-maximize', () => {
 ipcMain.on('window-close', () => mainWindow?.close());
 ipcMain.handle('window-is-maximized', () => mainWindow?.isMaximized() ?? false);
 
+// ── Startup / shutdown ─────────────────────────────────────────────────────
+
 Menu.setApplicationMenu(null);
 
 app.whenReady().then(async () => {
-  await connectLocalOpencode();
   createWindow();
+
+  // Load existing agents and (re)start their containers
+  let agents = [];
+  try {
+    agents = await db.listAgents();
+  } catch (e) {
+    console.error('[startup] db error:', e.message);
+  }
+
+  await buildImageIfNeeded().catch((e) => console.error('[startup] image build failed:', e.message));
+
+  for (const agent of agents) {
+    const send = (status, error) =>
+      mainWindow?.webContents.send('agent-status', { agentId: agent.id, status, error });
+    send('starting');
+    ensureContainer(agent.id)
+      .then(() => buildHarness(agent))
+      .then(() => send('ready'))
+      .catch((e) => {
+        console.error(`[startup] container error for ${agent.id}:`, e.message);
+        send('error', e.message);
+      });
+  }
 });
 
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
-});
+app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 
-app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) createWindow();
+// Stop all containers cleanly on quit
+app.on('before-quit', async () => {
+  const agents = await db.listAgents().catch(() => []);
+  await Promise.allSettled(agents.map((a) => stopContainer(a.id)));
 });

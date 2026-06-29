@@ -1,14 +1,16 @@
 import React, { useEffect, useRef } from 'react';
+import ToolCall from './ToolCall';
 import './ChatArea.css';
 
-function ChatArea({ task, onDispatch, isThinking, onNewTask }) {
-  const messagesEndRef = useRef(null);
+function ChatArea({ agent, isThinking, onNewAgent }) {
+  const bottomRef = useRef(null);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [task?.messages]);
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [agent?.messages]);
 
-  if (!task) {
+  // No agent selected
+  if (!agent) {
     return (
       <div className="chat-area">
         <div className="start-screen">
@@ -26,10 +28,10 @@ function ChatArea({ task, onDispatch, isThinking, onNewTask }) {
           </div>
           <h1 className="start-screen-title">AsyncAI</h1>
           <p className="start-screen-subtitle">
-            Plan with an AI agent, then dispatch it to work autonomously and open a PR.
+            Spawn AI agents with their own computers. Chat with them, send them off to work.
           </p>
-          <button className="start-screen-btn" onClick={onNewTask}>
-            Start a new task
+          <button className="start-screen-btn" onClick={onNewAgent}>
+            New Agent
           </button>
         </div>
       </div>
@@ -40,43 +42,40 @@ function ChatArea({ task, onDispatch, isThinking, onNewTask }) {
     <div className="chat-area">
       <div className="chat-header">
         <div className="header-title-group">
-          <h2 className="channel-title">{task.name}</h2>
-        </div>
-        <div className="header-actions">
-          {task.status === 'planning' && (
-            <button className="dispatch-btn" onClick={onDispatch}>
-              Dispatch →
-            </button>
-          )}
-          {task.status === 'running' && (
-            <span className="running-indicator">● Running...</span>
-          )}
-          {task.status === 'done' && task.prUrl && (
-            <a
-              href={task.prUrl}
-              className="pr-link"
-              target="_blank"
-              rel="noreferrer"
-            >
-              View PR →
-            </a>
+          <h2 className="channel-title">{agent.name}</h2>
+          {agent.status === 'starting' && (
+            <span className="header-status">starting computer…</span>
           )}
         </div>
       </div>
 
       <div className="messages-container">
-        {task.messages.map((msg, idx) => {
+        {agent.messages.map((msg, idx) => {
           if (msg.role === 'system') {
             return (
               <div key={msg.id} className="message-system">
                 <span className="message-system-text">{msg.text}</span>
-                <span className="message-system-time">{msg.time}</span>
+                {msg.time && <span className="message-system-time">{msg.time}</span>}
               </div>
             );
           }
 
-          const isAI = msg.role === 'assistant';
-          const showAvatar = idx === 0 || task.messages[idx - 1].role !== msg.role;
+          if (msg.role === 'tool') {
+            return (
+              <div key={msg.id} className="message-tool-row">
+                <ToolCall
+                  tool={msg.tool}
+                  params={msg.params}
+                  output={msg.output}
+                  status={msg.status}
+                />
+              </div>
+            );
+          }
+
+          const isAI      = msg.role === 'assistant';
+          const prevMsg   = agent.messages[idx - 1];
+          const showAvatar = !prevMsg || prevMsg.role !== msg.role || prevMsg.role === 'tool';
 
           return (
             <div
@@ -85,7 +84,7 @@ function ChatArea({ task, onDispatch, isThinking, onNewTask }) {
             >
               {showAvatar ? (
                 <div className={`message-avatar${isAI ? ' message-avatar--ai' : ''}`}>
-                  {isAI ? 'AI' : 'Y'}
+                  {isAI ? agent.name[0].toUpperCase() : 'Y'}
                 </div>
               ) : (
                 <div className="message-avatar-spacer" />
@@ -93,8 +92,8 @@ function ChatArea({ task, onDispatch, isThinking, onNewTask }) {
               <div className="message-content">
                 {showAvatar && (
                   <div className="message-header">
-                    <span className="message-user">{isAI ? 'Agent' : 'You'}</span>
-                    <span className="message-time">{msg.time}</span>
+                    <span className="message-user">{isAI ? agent.name : 'You'}</span>
+                    {msg.time && <span className="message-time">{msg.time}</span>}
                   </div>
                 )}
                 <div className="message-text">{msg.text}</div>
@@ -102,20 +101,15 @@ function ChatArea({ task, onDispatch, isThinking, onNewTask }) {
             </div>
           );
         })}
+
         {isThinking && (
-          <div className="message message--assistant message-first">
-            <div className="message-avatar message-avatar--ai">AI</div>
-            <div className="message-content">
-              <div className="message-header">
-                <span className="message-user">Agent</span>
-              </div>
-              <div className="thinking-dots">
-                <span /><span /><span />
-              </div>
-            </div>
+          <div className="thinking-row">
+            <div className="thinking-spinner" />
+            <span className="thinking-label">{agent.name} is thinking…</span>
           </div>
         )}
-        <div ref={messagesEndRef} />
+
+        <div ref={bottomRef} />
       </div>
     </div>
   );

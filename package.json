@@ -1,7 +1,7 @@
 {
-  "name": "asyncai-chat",
+  "name": "asyncai",
   "version": "1.0.0",
-  "description": "A Slack-like desktop chat application",
+  "description": "Persistent AI agents with their own computers",
   "main": "src/main/main.js",
   "scripts": {
     "build": "webpack --mode production",
@@ -22,9 +22,9 @@
     "webpack-cli": "^5.1.4"
   },
   "dependencies": {
-    "@opencode-ai/sdk": "^1.17.11",
     "agentation": "^3.0.2",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react-dom": "^18.2.0",
+    "sql.js": "^1.14.1"
   }
 }

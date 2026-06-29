@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Agentation } from 'agentation';
 import TitleBar from './components/TitleBar';
 import Sidebar from './components/Sidebar';
@@ -6,211 +6,162 @@ import ChatArea from './components/ChatArea';
 import MessageInput from './components/MessageInput';
 import TaskModal from './components/TaskModal';
 
+let msgSeq = 0;
+const mkId = () => `ui-${++msgSeq}`;
+
 const now = () =>
   new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-const DISPATCH_PROMPT =
-  "I'm ready for you to start. Please implement the task we discussed, work autonomously, and open a PR when done.";
-
 function App() {
-  const [tasks, setTasks] = useState([]);
-  const [activeTaskId, setActiveTaskId] = useState(null);
-  const [isThinking, setIsThinking] = useState(false);
-  const [showModal, setShowModal] = useState(false);
+  const [agents, setAgents]             = useState([]);
+  const [activeAgentId, setActiveAgentId] = useState(null);
+  const [isThinking, setIsThinking]     = useState(false);
+  const [showModal, setShowModal]       = useState(false);
 
-  const activeTask = tasks.find((t) => t.id === activeTaskId) ?? null;
+  // Maps tool-call API id → UI message id
+  const toolMsgIds = useRef({});
 
-  const handleOpenModal = () => setShowModal(true);
-  const handleCloseModal = () => setShowModal(false);
+  const activeAgent = agents.find((a) => a.id === activeAgentId) ?? null;
 
-  const handleCreateTask = async ({ name, repo }) => {
-    const id = `task-${Date.now()}`;
+  // ── Load agents on mount ───────────────────────────────────────────────
+  useEffect(() => {
+    window.electronAPI.agent.list().then((loaded) => {
+      // Assign UI ids to persisted messages
+      const withIds = loaded.map((agent) => ({
+        ...agent,
+        messages: agent.messages.map((m) => ({ ...m, id: m.id ?? mkId() })),
+      }));
+      setAgents(withIds);
+      if (withIds.length > 0) setActiveAgentId(withIds[0].id);
+    });
+  }, []);
 
-    setTasks((prev) => [
-      ...prev,
-      {
-        id,
-        name,
-        repo,
-        status: 'starting',
-        containerId: null,
-        sessionId: null,
-        prUrl: null,
-        messages: [
-          {
-            id: 1,
-            role: 'system',
-            text: `Cloning ${repo} and starting agent container…`,
-            time: now(),
-          },
-        ],
-      },
-    ]);
-    setActiveTaskId(id);
+  // ── Main-process events ────────────────────────────────────────────────
+  useEffect(() => {
+    const { agent } = window.electronAPI;
 
-    try {
-      const { containerId, sessionId } =
-        await window.electronAPI.opencode.startContainer(repo, id);
+    // Container ready / error status updates
+    agent.onStatus(({ agentId, status, error }) => {
+      setAgents((prev) =>
+        prev.map((a) => {
+          if (a.id !== agentId) return a;
+          if (status === 'error') {
+            return {
+              ...a,
+              status: 'error',
+              messages: [...a.messages, { id: mkId(), role: 'system', text: `Error: ${error}`, time: now() }],
+            };
+          }
+          return { ...a, status };
+        })
+      );
+    });
 
-      setTasks((prev) =>
-        prev.map((t) =>
-          t.id !== id
-            ? t
-            : {
-                ...t,
-                status: 'planning',
-                containerId,
-                sessionId,
+    // Streaming events from the agent harness
+    agent.onEvent(({ agentId, type, ...payload }) => {
+      switch (type) {
+        case 'thinking':
+          setIsThinking(true);
+          break;
+
+        case 'text':
+          setIsThinking(false);
+          setAgents((prev) =>
+            prev.map((a) =>
+              a.id !== agentId ? a : {
+                ...a,
+                messages: [...a.messages, { id: mkId(), role: 'assistant', text: payload.text, time: now() }],
+              }
+            )
+          );
+          break;
+
+        case 'tool-start': {
+          setIsThinking(false);
+          const msgId = mkId();
+          toolMsgIds.current[payload.id] = msgId;
+          setAgents((prev) =>
+            prev.map((a) =>
+              a.id !== agentId ? a : {
+                ...a,
                 messages: [
-                  ...t.messages,
-                  {
-                    id: Date.now(),
-                    role: 'system',
-                    text: `Agent ready. Describe what you want to build.`,
-                    time: now(),
-                  },
+                  ...a.messages,
+                  { id: msgId, role: 'tool', tool: payload.tool, params: payload.params, output: null, status: 'running' },
                 ],
               }
-        )
-      );
-    } catch (e) {
-      setTasks((prev) =>
-        prev.map((t) =>
-          t.id !== id
-            ? t
-            : {
-                ...t,
-                status: 'planning',
-                messages: [
-                  ...t.messages,
-                  {
-                    id: Date.now(),
-                    role: 'system',
-                    text: `Container error: ${e.message}`,
-                    time: now(),
-                  },
-                ],
+            )
+          );
+          break;
+        }
+
+        case 'tool-done': {
+          const msgId = toolMsgIds.current[payload.id];
+          if (msgId) {
+            setAgents((prev) =>
+              prev.map((a) =>
+                a.id !== agentId ? a : {
+                  ...a,
+                  messages: a.messages.map((m) =>
+                    m.id !== msgId ? m : { ...m, output: payload.output, status: payload.status }
+                  ),
+                }
+              )
+            );
+          }
+          break;
+        }
+
+        case 'error':
+          setIsThinking(false);
+          setAgents((prev) =>
+            prev.map((a) =>
+              a.id !== agentId ? a : {
+                ...a,
+                messages: [...a.messages, { id: mkId(), role: 'system', text: `Error: ${payload.message}`, time: now() }],
               }
-        )
-      );
-    }
+            )
+          );
+          break;
+
+        case 'done':
+          setIsThinking(false);
+          break;
+      }
+    });
+  }, []);
+
+  // ── Create agent ───────────────────────────────────────────────────────
+  const handleCreateAgent = async ({ name }) => {
+    const agent = await window.electronAPI.agent.create(name);
+    setAgents((prev) => [...prev, { ...agent, messages: [] }]);
+    setActiveAgentId(agent.id);
   };
 
-  const handleSendMessage = async (text) => {
-    const time = now();
-    const capturedTaskId = activeTaskId;
-    const capturedSessionId = activeTask?.sessionId;
+  // ── Send message ───────────────────────────────────────────────────────
+  const handleSend = async (text) => {
+    if (!activeAgentId || isThinking) return;
 
-    setTasks((prev) =>
-      prev.map((t) => {
-        if (t.id !== capturedTaskId) return t;
-        return {
-          ...t,
-          name:
-            t.messages.filter((m) => m.role === 'user').length === 0
-              ? text.slice(0, 45) + (text.length > 45 ? '…' : '')
-              : t.name,
-          messages: [
-            ...t.messages,
-            { id: Date.now(), role: 'user', text, time },
-          ],
-        };
-      })
-    );
-
-    if (!capturedSessionId) {
-      setTasks((prev) =>
-        prev.map((t) =>
-          t.id !== capturedTaskId
-            ? t
-            : {
-                ...t,
-                messages: [
-                  ...t.messages,
-                  {
-                    id: Date.now() + 1,
-                    role: 'system',
-                    text: 'Container not ready yet — try again in a moment.',
-                    time: now(),
-                  },
-                ],
-              }
-        )
-      );
-      return;
-    }
-
-    setIsThinking(true);
-    try {
-      const responseText = await window.electronAPI.opencode.sendMessage(
-        capturedSessionId,
-        text
-      );
-      setTasks((prev) =>
-        prev.map((t) =>
-          t.id !== capturedTaskId
-            ? t
-            : {
-                ...t,
-                messages: [
-                  ...t.messages,
-                  {
-                    id: Date.now(),
-                    role: 'assistant',
-                    text: responseText || '(empty response)',
-                    time: now(),
-                  },
-                ],
-              }
-        )
-      );
-    } catch (e) {
-      setTasks((prev) =>
-        prev.map((t) =>
-          t.id !== capturedTaskId
-            ? t
-            : {
-                ...t,
-                messages: [
-                  ...t.messages,
-                  {
-                    id: Date.now(),
-                    role: 'system',
-                    text: `Error: ${e.message}`,
-                    time: now(),
-                  },
-                ],
-              }
-        )
-      );
-    } finally {
-      setIsThinking(false);
-    }
-  };
-
-  const handleDispatch = () => {
-    const capturedTaskId = activeTaskId;
-    setTasks((prev) =>
-      prev.map((t) =>
-        t.id !== capturedTaskId ? t : { ...t, status: 'running' }
+    setAgents((prev) =>
+      prev.map((a) =>
+        a.id !== activeAgentId ? a : {
+          ...a,
+          messages: [...a.messages, { id: mkId(), role: 'user', text, time: now() }],
+        }
       )
     );
-    handleSendMessage(DISPATCH_PROMPT);
+
+    await window.electronAPI.agent.chat(activeAgentId, text);
   };
 
   const inputDisabled =
-    !activeTask ||
-    activeTask.status === 'starting' ||
-    activeTask.status === 'running' ||
+    !activeAgent ||
+    activeAgent.status === 'starting' ||
     isThinking;
 
-  const inputPlaceholder = isThinking
-    ? 'Agent is thinking…'
-    : activeTask?.status === 'starting'
-    ? 'Starting container…'
-    : activeTask?.status === 'running'
-    ? 'Agent is working…'
-    : 'Chat with your agent…';
+  const inputPlaceholder =
+    activeAgent?.status === 'starting' ? 'Computer is starting…' :
+    isThinking                         ? 'Agent is thinking…'    :
+                                         'Message your agent…';
 
   return (
     <div className="app">
@@ -218,21 +169,20 @@ function App() {
       <Agentation />
       <div className="app-body">
         <Sidebar
-          tasks={tasks}
-          activeTaskId={activeTaskId}
-          onTaskSelect={setActiveTaskId}
-          onNewTask={handleOpenModal}
+          agents={agents}
+          activeAgentId={activeAgentId}
+          onAgentSelect={setActiveAgentId}
+          onNewAgent={() => setShowModal(true)}
         />
         <div className="main-panel">
           <ChatArea
-            task={activeTask}
-            onDispatch={handleDispatch}
+            agent={activeAgent}
             isThinking={isThinking}
-            onNewTask={handleOpenModal}
+            onNewAgent={() => setShowModal(true)}
           />
-          {activeTask && (
+          {activeAgent && (
             <MessageInput
-              onSend={handleSendMessage}
+              onSend={handleSend}
               disabled={inputDisabled}
               placeholder={inputPlaceholder}
             />
@@ -241,7 +191,10 @@ function App() {
       </div>
 
       {showModal && (
-        <TaskModal onClose={handleCloseModal} onCreate={handleCreateTask} />
+        <TaskModal
+          onClose={() => setShowModal(false)}
+          onCreate={handleCreateAgent}
+        />
       )}
     </div>
   );

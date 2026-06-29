@@ -1,9 +1,18 @@
-FROM node:20-slim
+FROM debian:bookworm-slim
 
-RUN apt-get update && apt-get install -y git ca-certificates && rm -rf /var/lib/apt/lists/*
-RUN npm install -g opencode-ai
+RUN apt-get update && apt-get install -y curl ca-certificates gnupg \
+    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y nodejs git python3 \
+    && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+       | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+       | tee /etc/apt/sources.list.d/github-cli.list \
+    && apt-get update && apt-get install -y gh \
+    && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /workspace
+WORKDIR /home/agent
 
-# GITHUB_REPO is passed at run time, e.g. "owner/repo"
-CMD ["sh", "-c", "git clone https://github.com/${GITHUB_REPO} . && opencode serve --hostname 0.0.0.0 --port 4096"]
+COPY docker/start.sh /start.sh
+RUN chmod +x /start.sh
+
+CMD ["/start.sh"]

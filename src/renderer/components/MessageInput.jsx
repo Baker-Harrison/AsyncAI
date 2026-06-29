@@ -25,7 +25,7 @@ function MessageInput({ onSend, disabled, placeholder }) {
         <input
           type="text"
           className="message-input-field"
-          placeholder={placeholder ?? (disabled ? 'Agent is running…' : 'Chat with your agent…')}
+          placeholder={placeholder ?? 'Message your agent…'}
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}

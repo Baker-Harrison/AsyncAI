@@ -9,12 +9,83 @@
   background: #222529;
   border: 1px solid #2d2d30;
   border-radius: 8px;
-  padding: 0 10px 0 14px;
+  padding: 0 10px 0 12px;
 }
 
 .message-input-form:focus-within {
   border-color: #565869;
 }
+
+/* ── Repo + branch meta selectors ────────────────────────────────────── */
+
+.mi-meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.mi-meta-icon {
+  font-size: 12px;
+  color: #4a4a4c;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.mi-repo-input {
+  width: 88px;
+  border: none;
+  background: transparent;
+  color: #8e9094;
+  font-size: 12px;
+  font-family: inherit;
+  outline: none;
+  padding: 0;
+  min-width: 0;
+}
+
+.mi-repo-input:not(:disabled):focus {
+  color: #d1d2d3;
+  width: 130px;
+}
+
+.mi-repo-input:disabled {
+  color: #616061;
+  cursor: default;
+}
+
+.mi-sep {
+  color: #2d2d30;
+  font-size: 14px;
+  flex-shrink: 0;
+  margin: 0 2px;
+}
+
+.mi-branch-input {
+  width: 44px;
+  border: none;
+  background: transparent;
+  color: #8e9094;
+  font-size: 12px;
+  font-family: inherit;
+  outline: none;
+  padding: 0;
+  min-width: 0;
+}
+
+.mi-branch-input:focus {
+  color: #d1d2d3;
+  width: 80px;
+}
+
+.input-divider {
+  width: 1px;
+  height: 18px;
+  background: #2d2d30;
+  flex-shrink: 0;
+}
+
+/* ── Text input ──────────────────────────────────────────────────────── */
 
 .message-input-field {
   flex: 1;
@@ -25,15 +96,13 @@
   font-size: 14px;
   outline: none;
   font-family: inherit;
+  min-width: 0;
 }
 
-.message-input-field::placeholder {
-  color: #616061;
-}
+.message-input-field::placeholder { color: #616061; }
+.message-input-field:disabled      { cursor: not-allowed; }
 
-.message-input-field:disabled {
-  cursor: not-allowed;
-}
+/* ── Send button ─────────────────────────────────────────────────────── */
 
 .send-btn {
   width: 32px;
@@ -50,9 +119,7 @@
   flex-shrink: 0;
 }
 
-.send-btn:hover:not(:disabled) {
-  background: #148567;
-}
+.send-btn:hover:not(:disabled) { background: #148567; }
 
 .send-btn:disabled {
   background: #2d2d30;

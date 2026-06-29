@@ -1,7 +1,7 @@
 import React from 'react';
 import './Sidebar.css';
 
-function Sidebar({ tasks, activeTaskId, onTaskSelect, onNewTask }) {
+function Sidebar({ agents, activeAgentId, onAgentSelect, onNewAgent }) {
   return (
     <div className="sidebar">
       <div className="workspace-header">
@@ -14,22 +14,21 @@ function Sidebar({ tasks, activeTaskId, onTaskSelect, onNewTask }) {
       <div className="sidebar-scroll">
         <div className="sidebar-section">
           <div className="section-header">
-            <span>Tasks</span>
-            <button className="new-task-btn" onClick={onNewTask}>+ New</button>
+            <span>Agents</span>
+            <button className="new-task-btn" onClick={onNewAgent}>+ New Agent</button>
           </div>
           <ul className="task-list">
-            {tasks.map((task) => (
+            {agents.map((agent) => (
               <li
-                key={task.id}
-                className={`task-item ${activeTaskId === task.id ? 'active' : ''}`}
-                onClick={() => onTaskSelect(task.id)}
+                key={agent.id}
+                className={`task-item ${activeAgentId === agent.id ? 'active' : ''}`}
+                onClick={() => onAgentSelect(agent.id)}
               >
                 <div className="task-item-body">
-                  <span className="task-label">{task.name}</span>
-                  {task.repo && <span className="task-repo">{task.repo}</span>}
+                  <span className="task-label">{agent.name}</span>
                 </div>
-                {(task.status === 'starting' || task.status === 'running') && (
-                  <span className={`status-dot status-dot--${task.status}`} />
+                {agent.status === 'starting' && (
+                  <span className="status-dot status-dot--starting" />
                 )}
               </li>
             ))}

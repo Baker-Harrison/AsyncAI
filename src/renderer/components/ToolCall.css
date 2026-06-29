@@ -1,0 +1,127 @@
+.tool-call {
+  margin: 2px 0;
+  border-radius: 6px;
+  border: 1px solid #2d2d30;
+  background: #1a1d21;
+  overflow: hidden;
+}
+
+.tool-call--error {
+  border-color: #522;
+}
+
+.tool-call-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 6px 10px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  color: #ababad;
+  font-size: 12px;
+  font-family: inherit;
+}
+
+.tool-call-header:hover {
+  background: #222529;
+}
+
+.tool-call-icon {
+  font-size: 13px;
+  flex-shrink: 0;
+  color: #565869;
+}
+
+.tool-call-icon--spin {
+  animation: tool-spin 1s linear infinite;
+  color: #ECB22E;
+  display: inline-block;
+}
+
+@keyframes tool-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.tool-call-label {
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: #d1d2d3;
+  flex-shrink: 0;
+  width: 36px;
+}
+
+.tool-call-summary {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 11px;
+  color: #8d8d8f;
+}
+
+.tool-call-status {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.tool-call-status--ok { color: #2EB67D; }
+.tool-call-status--error { color: #e01e5a; }
+
+.tool-call-running-badge {
+  flex-shrink: 0;
+  font-size: 10px;
+  color: #ECB22E;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.tool-call-chevron {
+  flex-shrink: 0;
+  font-size: 9px;
+  color: #565869;
+}
+
+.tool-call-body {
+  border-top: 1px solid #2d2d30;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tool-call-section-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: #616061;
+  margin-bottom: 4px;
+}
+
+.tool-call-pre {
+  margin: 0;
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 11px;
+  color: #c9c9ca;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 300px;
+  overflow-y: auto;
+  background: #111214;
+  border-radius: 4px;
+  padding: 6px 8px;
+  line-height: 1.5;
+}
+
+.tool-call-pre--error {
+  color: #ff7b7b;
+}
