@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import ToolCall from './ToolCall';
+import MarkdownRenderer from './MarkdownRenderer';
 import './ChatArea.css';
 
 function ChatArea({ agent, isThinking, onNewAgent }) {
@@ -114,7 +115,11 @@ function ChatArea({ agent, isThinking, onNewAgent }) {
                     {msg.time && <span className="message-time">{msg.time}</span>}
                   </div>
                 )}
-                <div className="message-text">{msg.text}</div>
+                {isAI ? (
+                  <MarkdownRenderer text={msg.text} />
+                ) : (
+                  <div className="message-text">{msg.text}</div>
+                )}
               </div>
             </div>
           );
