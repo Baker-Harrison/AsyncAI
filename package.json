@@ -23,6 +23,7 @@
   },
   "dependencies": {
     "agentation": "^3.0.2",
+    "marked": "^18.0.5",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "sql.js": "^1.14.1"
