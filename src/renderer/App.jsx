@@ -40,6 +40,15 @@ function App() {
   useEffect(() => {
     const { agent } = window.electronAPI;
 
+    // Context cleared — wipe UI messages for this agent
+    agent.onCleared(({ agentId }) => {
+      setAgents((prev) =>
+        prev.map((a) =>
+          a.id !== agentId ? a : { ...a, messages: [] }
+        )
+      );
+    });
+
     // Container ready / error status updates
     agent.onStatus(({ agentId, status, error }) => {
       setAgents((prev) =>
@@ -153,15 +162,17 @@ function App() {
     await window.electronAPI.agent.chat(activeAgentId, text);
   };
 
-  const inputDisabled =
-    !activeAgent ||
-    activeAgent.status === 'starting' ||
-    isThinking;
+  // ── Slash commands ─────────────────────────────────────────────────────
+  const handleCommand = async (name) => {
+    if (!activeAgentId) return;
+    if (name === '/clear') {
+      await window.electronAPI.agent.clear(activeAgentId);
+      // UI is cleared via agent-cleared event from main process
+    }
+  };
 
-  const inputPlaceholder =
-    activeAgent?.status === 'starting' ? 'Computer is starting…' :
-    isThinking                         ? 'Agent is thinking…'    :
-                                         'Message your agent…';
+  const inputDisabled = !activeAgent || activeAgent.status === 'starting' || isThinking;
+  const inputPlaceholder = isThinking ? 'Agent is thinking…' : 'Message your agent…';
 
   return (
     <div className="app">
@@ -183,8 +194,9 @@ function App() {
           {activeAgent && activeAgent.status !== 'starting' && (
             <MessageInput
               onSend={handleSend}
-              disabled={isThinking}
-              placeholder={isThinking ? 'Agent is thinking…' : 'Message your agent…'}
+              onCommand={handleCommand}
+              disabled={inputDisabled}
+              placeholder={inputPlaceholder}
             />
           )}
         </div>

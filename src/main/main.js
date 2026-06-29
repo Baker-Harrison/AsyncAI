@@ -81,16 +81,26 @@ async function stopContainer(agentId) {
 const harnesses = new Map(); // agentId → AgentHarness
 
 async function buildHarness(agent) {
+  // Get or create the current session
+  let session = await db.getCurrentSession(agent.id);
+  if (!session) session = { id: await db.createSession(agent.id) };
+
   const messages = await db.getMessages(agent.id);
   const harness = new AgentHarness({
     agentId:       agent.id,
     containerName: containerName(agent.id),
     agentName:     agent.name,
+    sessionId:     session.id,
     history:       messages,
     onEvent:       (event) => mainWindow?.webContents.send('agent-event', { agentId: agent.id, ...event }),
     saveMessage:   (msg)   => db.addMessage({ agentId: agent.id, ...msg }),
-    addMemory:     (mem)   => db.addMemory(mem),
-    searchMemories:(query) => db.searchMemories(agent.id, query),
+    searchHistory: (agentId, query) => db.searchHistory(agentId, query),
+    onClear: async (oldSessionId) => {
+      await db.endSession(oldSessionId);
+      const newSessionId = await db.createSession(agent.id);
+      harness.sessionId = newSessionId;
+      mainWindow?.webContents.send('agent-cleared', { agentId: agent.id });
+    },
   });
   harnesses.set(agent.id, harness);
   return harness;
@@ -168,6 +178,12 @@ ipcMain.handle('agent:chat', async (_, { agentId, text }) => {
 
 ipcMain.handle('agent:abort', (_, { agentId }) => {
   harnesses.get(agentId)?.abort();
+});
+
+ipcMain.handle('agent:clear', async (_, { agentId }) => {
+  const harness = harnesses.get(agentId);
+  if (!harness) throw new Error(`No harness for agent ${agentId}`);
+  await harness.clear();
 });
 
 // ── Window ─────────────────────────────────────────────────────────────────

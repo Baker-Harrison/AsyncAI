@@ -70,23 +70,11 @@ const TOOLS = [
   {
     type: 'function',
     function: {
-      name: 'remember',
-      description: 'Save a fact, preference, or piece of context to long-term memory. Use this for anything important you learn about the user, their projects, or preferences — so you can recall it in future conversations.',
+      name: 'search_history',
+      description: 'Search through archived past conversations for context you don\'t have in the current session. Use this when the user references something you don\'t recognise, or when you need context from a previous session. If nothing relevant is found, say you don\'t know and ask the user — never guess.',
       parameters: {
         type: 'object',
-        properties: { content: { type: 'string', description: 'The fact or context to remember. Be specific and self-contained — write it as if you\'ll read it cold later with no surrounding context.' } },
-        required: ['content'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'recall',
-      description: 'Search your long-term memory for information relevant to a query. Always use this before making assumptions about the user, their projects, or preferences. If no memories match, say you don\'t know and ask the user.',
-      parameters: {
-        type: 'object',
-        properties: { query: { type: 'string', description: 'Keywords or a short phrase describing what you\'re looking for.' } },
+        properties: { query: { type: 'string', description: 'Keywords to search for in past conversations.' } },
         required: ['query'],
       },
     },
@@ -97,27 +85,33 @@ const systemPrompt = (name) =>
   `You are ${name}, a capable AI assistant with your own computer. ` +
   `Use your tools to get things done — run commands, write code, browse with curl, work with git and GitHub, manage files, whatever the user needs. ` +
   `Your home directory is /home/agent.\n\n` +
-  `## Memory rules\n` +
-  `- Use \`recall\` whenever you're uncertain about something the user may have told you before.\n` +
-  `- Use \`remember\` to save anything important you learn — facts about the user, their projects, preferences, credentials, decisions.\n` +
-  `- If \`recall\` returns no matches, say you don't know and ask the user. Never guess or make up context.`;
+  `## Context rules\n` +
+  `- Your current session is what's in this conversation. Past sessions are archived.\n` +
+  `- Use \`search_history\` when the user references something you don't have context for — search before admitting you don't know.\n` +
+  `- If \`search_history\` returns nothing relevant, say you don't know and ask the user. Never guess or invent context.`;
 
 // ── AgentHarness ───────────────────────────────────────────────────────────
 
 class AgentHarness {
-  constructor({ agentId, containerName, agentName, history, onEvent, saveMessage, addMemory, searchMemories }) {
-    this.agentId         = agentId;
-    this.containerName   = containerName;
-    this.agentName       = agentName;
-    this.onEvent         = onEvent;
-    this.saveMessage     = saveMessage;
-    this.addMemory       = addMemory;
-    this.searchMemories  = searchMemories;
-    this._running        = false;
-    this._aborted        = false;
+  constructor({ agentId, containerName, agentName, sessionId, history, onEvent, saveMessage, searchHistory, onClear }) {
+    this.agentId       = agentId;
+    this.containerName = containerName;
+    this.agentName     = agentName;
+    this.sessionId     = sessionId;
+    this.onEvent       = onEvent;
+    this.saveMessage   = saveMessage;
+    this.searchHistory = searchHistory;
+    this.onClear       = onClear;
+    this._running      = false;
+    this._aborted      = false;
 
-    // Reconstruct model history from persisted DB messages
     this.modelHistory = history.map((m) => JSON.parse(m.model_json));
+  }
+
+  async clear() {
+    await this.onClear(this.sessionId);
+    this.modelHistory = [];
+    this.sessionId    = null; // will be set by onClear callback after new session created
   }
 
   abort() { this._aborted = true; }
@@ -130,7 +124,7 @@ class AgentHarness {
     try {
       // Persist and record user message
       const userMsg = { role: 'user', content: userText };
-      await this.saveMessage({ role: 'user', modelJson: JSON.stringify(userMsg), displayText: userText });
+      await this.saveMessage({ role: 'user', sessionId: this.sessionId, modelJson: JSON.stringify(userMsg), displayText: userText });
       this.modelHistory.push(userMsg);
 
       this.onEvent({ type: 'thinking' });
@@ -158,6 +152,7 @@ class AgentHarness {
       // Persist assistant message
       await this.saveMessage({
         role:        'assistant',
+        sessionId:   this.sessionId,
         modelJson:   JSON.stringify(msg),
         displayText: msg.content || null,
       });
@@ -193,6 +188,7 @@ class AgentHarness {
         const toolMsg = { role: 'tool', tool_call_id: tc.id, content: display };
         await this.saveMessage({
           role:        'tool',
+          sessionId:   this.sessionId,
           modelJson:   JSON.stringify(toolMsg),
           displayText: null,
           toolCallId:  tc.id,
@@ -254,23 +250,25 @@ class AgentHarness {
       case 'read':     return this._read(params.path);
       case 'write':    return this._write(params.path, params.content);
       case 'edit':     return this._edit(params.path, params.old_str, params.new_str);
-      case 'remember': return this._remember(params.content);
-      case 'recall':   return this._recall(params.query);
+      case 'search_history': return this._searchHistory(params.query);
       default: throw new Error(`Unknown tool: ${name}`);
     }
   }
 
-  async _remember(content) {
-    await this.addMemory({ agentId: this.agentId, content });
-    return `Saved to memory: "${content}"`;
-  }
-
-  async _recall(query) {
-    const matches = await this.searchMemories(this.agentId, query);
-    if (matches.length === 0) {
-      return `No memories found matching "${query}". You do not know this — ask the user.`;
+  async _searchHistory(query) {
+    const results = await this.searchHistory(this.agentId, query);
+    if (results.length === 0) {
+      return `No past conversations found matching "${query}". You do not have this context — ask the user.`;
     }
-    return matches.map((m, i) => `[${i + 1}] ${m.content}`).join('\n');
+    return results.map(({ session, messages }) => {
+      const date = new Date(session.started_at).toLocaleString();
+      const lines = messages.map((m) => {
+        const who    = m.role === 'user' ? 'You' : m.role === 'assistant' ? this.agentName : `[${m.tool_name}]`;
+        const text   = m.display_text || m.tool_output || '';
+        return `  ${who}: ${text.slice(0, 300)}`;
+      }).join('\n');
+      return `[Session: ${date}]\n${lines}`;
+    }).join('\n\n');
   }
 
   async _bash(command) {
