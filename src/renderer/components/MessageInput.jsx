@@ -75,6 +75,13 @@ function MessageInput({ onSend, onCommand, disabled, placeholder }) {
     }
   };
 
+  // Auto-resize textarea
+  const handleInput = (e) => {
+    const el = e.target;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+  };
+
   return (
     <div className="message-input-container">
       {suggestions.length > 0 && (
@@ -93,16 +100,17 @@ function MessageInput({ onSend, onCommand, disabled, placeholder }) {
         </div>
       )}
       <form className="message-input-form" onSubmit={handleSubmit}>
-        <input
+        <textarea
           ref={inputRef}
-          type="text"
           className="message-input-field"
           placeholder={placeholder ?? 'Message your agent… (type / for commands)'}
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
+          onInput={handleInput}
           disabled={disabled}
           autoComplete="off"
+          rows={1}
         />
         <button
           type="submit"

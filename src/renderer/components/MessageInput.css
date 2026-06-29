@@ -54,7 +54,7 @@
 
 .message-input-form {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: 8px;
   background: #222529;
   border: 1px solid #2d2d30;
@@ -135,7 +135,7 @@
   flex-shrink: 0;
 }
 
-/* ── Text input ──────────────────────────────────────────────────────── */
+/* ── Text input / textarea ──────────────────────────────────────────────── */
 
 .message-input-field {
   flex: 1;
@@ -147,6 +147,9 @@
   outline: none;
   font-family: inherit;
   min-width: 0;
+  resize: none;
+  line-height: 1.4;
+  max-height: 200px;
 }
 
 .message-input-field::placeholder { color: #616061; }

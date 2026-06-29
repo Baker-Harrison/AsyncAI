@@ -4,18 +4,11 @@ import './Sidebar.css';
 function Sidebar({ agents, activeAgentId, onAgentSelect, onNewAgent, onOpenSettings }) {
   return (
     <div className="sidebar">
-      <div className="workspace-header">
-        <div className="workspace-name">
-          <div className="workspace-icon">A</div>
-          AsyncAI
-        </div>
-      </div>
-
       <div className="sidebar-scroll">
         <div className="sidebar-section">
           <div className="section-header">
             <span>Agents</span>
-            <button className="new-task-btn" onClick={onNewAgent}>+ New Agent</button>
+            <button className="new-task-btn" onClick={onNewAgent} title="New Agent">+</button>
           </div>
           <ul className="task-list">
             {agents.map((agent) => (
