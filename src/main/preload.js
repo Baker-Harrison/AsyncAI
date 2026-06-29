@@ -18,4 +18,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onStatus:  (cb) => ipcRenderer.on('agent-status',  (_, d) => cb(d)),
     onCleared: (cb) => ipcRenderer.on('agent-cleared', (_, d) => cb(d)),
   },
+
+  update: {
+    install:      ()   => ipcRenderer.send('update:install'),
+    onAvailable:  (cb) => ipcRenderer.on('update:available', (_, d) => cb(d)),
+    onProgress:   (cb) => ipcRenderer.on('update:progress',  (_, d) => cb(d)),
+    onDownloaded: (cb) => ipcRenderer.on('update:downloaded', (_, d) => cb(d)),
+  },
 });

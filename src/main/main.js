@@ -8,6 +8,7 @@ if (process.env.NODE_ENV === 'development') {
 }
 
 const { app, BrowserWindow, ipcMain, Menu } = require('electron');
+const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const fs   = require('fs');
 const { execFile } = require('child_process');
@@ -217,6 +218,30 @@ ipcMain.on('window-maximize', () => {
 });
 ipcMain.on('window-close', () => mainWindow?.close());
 ipcMain.handle('window-is-maximized', () => mainWindow?.isMaximized() ?? false);
+ipcMain.on('update:install', () => autoUpdater.quitAndInstall());
+
+// ── Auto-updater ───────────────────────────────────────────────────────────
+
+function setupAutoUpdater() {
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  autoUpdater.on('update-available', (info) => {
+    mainWindow?.webContents.send('update:available', { version: info.version });
+  });
+
+  autoUpdater.on('download-progress', (progress) => {
+    mainWindow?.webContents.send('update:progress', { percent: Math.round(progress.percent) });
+  });
+
+  autoUpdater.on('update-downloaded', (info) => {
+    mainWindow?.webContents.send('update:downloaded', { version: info.version });
+  });
+
+  autoUpdater.on('error', (e) => {
+    console.error('[updater]', e.message);
+  });
+}
 
 // ── Startup / shutdown ─────────────────────────────────────────────────────
 
@@ -224,6 +249,12 @@ Menu.setApplicationMenu(null);
 
 app.whenReady().then(async () => {
   createWindow();
+
+  // Check for updates in production only
+  if (process.env.NODE_ENV !== 'development') {
+    setupAutoUpdater();
+    autoUpdater.checkForUpdatesAndNotify().catch(() => {});
+  }
 
   // Load existing agents and (re)start their containers
   let agents = [];

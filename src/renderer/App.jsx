@@ -5,6 +5,7 @@ import Sidebar from './components/Sidebar';
 import ChatArea from './components/ChatArea';
 import MessageInput from './components/MessageInput';
 import TaskModal from './components/TaskModal';
+import UpdateBanner from './components/UpdateBanner';
 
 let msgSeq = 0;
 const mkId = () => `ui-${++msgSeq}`;
@@ -178,6 +179,7 @@ function App() {
     <div className="app">
       <TitleBar />
       <Agentation />
+      <UpdateBanner />
       <div className="app-body">
         <Sidebar
           agents={agents}

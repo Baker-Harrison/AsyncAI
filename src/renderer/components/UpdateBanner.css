@@ -1,0 +1,60 @@
+.update-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 16px;
+  font-size: 12px;
+  font-weight: 500;
+  flex-shrink: 0;
+  background: #1a2a1a;
+  border-bottom: 1px solid #2a3d2a;
+  color: #7ecf7e;
+}
+
+.update-banner--ready {
+  background: #1a2a1a;
+  border-bottom-color: #2eb67d44;
+}
+
+.update-banner-text {
+  flex-shrink: 0;
+}
+
+.update-progress-track {
+  flex: 1;
+  height: 3px;
+  background: #2d2d30;
+  border-radius: 2px;
+  overflow: hidden;
+  max-width: 160px;
+}
+
+.update-progress-fill {
+  height: 100%;
+  background: #2eb67d;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.update-banner-pct {
+  color: #616061;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.update-install-btn {
+  padding: 3px 10px;
+  background: #2eb67d;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  flex-shrink: 0;
+}
+
+.update-install-btn:hover {
+  background: #25a06e;
+}
