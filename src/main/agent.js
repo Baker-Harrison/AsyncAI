@@ -109,9 +109,9 @@ class AgentHarness {
   }
 
   async clear() {
-    await this.onClear(this.sessionId);
+    await this.onClear(this.sessionId); // onClear sets this.sessionId to the new session ID
     this.modelHistory = [];
-    this.sessionId    = null; // will be set by onClear callback after new session created
+    // DO NOT set this.sessionId = null here — onClear already updated it
   }
 
   abort() { this._aborted = true; }

@@ -136,13 +136,21 @@ async function addMessage({ agentId, sessionId, role, modelJson, displayText, to
   persist();
 }
 
-// Only load messages from the current (open) session for model history + UI
+// Load messages from the current open session. Falls back to all agent messages
+// if no session exists yet (e.g. agent:list called before buildHarness runs).
 async function getMessages(agentId) {
   const d    = await getDb();
   const sess = await getCurrentSession(agentId);
-  if (!sess) return [];
-  const stmt = d.prepare('SELECT * FROM messages WHERE agent_id = ? AND session_id = ? ORDER BY created_at ASC');
-  stmt.bind([agentId, sess.id]);
+
+  let stmt;
+  if (sess) {
+    stmt = d.prepare('SELECT * FROM messages WHERE agent_id = ? AND (session_id = ? OR session_id IS NULL) ORDER BY created_at ASC');
+    stmt.bind([agentId, sess.id]);
+  } else {
+    stmt = d.prepare('SELECT * FROM messages WHERE agent_id = ? ORDER BY created_at ASC');
+    stmt.bind([agentId]);
+  }
+
   const rows = [];
   while (stmt.step()) rows.push(stmt.getAsObject());
   stmt.free();
