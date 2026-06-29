@@ -1,0 +1,149 @@
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal {
+  background: #222529;
+  border: 1px solid #3a3a3d;
+  border-radius: 12px;
+  width: 480px;
+  max-width: calc(100vw - 40px);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.modal-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #d1d2d3;
+  margin: 0;
+}
+
+.modal-close {
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #616061;
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-close:hover {
+  background: #2d2d30;
+  color: #d1d2d3;
+}
+
+.modal-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.modal-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.modal-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #ababad;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.modal-optional {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  color: #616061;
+}
+
+.modal-input {
+  background: #1a1d21;
+  border: 1px solid #3a3a3d;
+  border-radius: 6px;
+  padding: 9px 12px;
+  font-size: 14px;
+  color: #d1d2d3;
+  outline: none;
+  font-family: inherit;
+  transition: border-color 120ms ease;
+}
+
+.modal-input:focus {
+  border-color: #565869;
+}
+
+.modal-input::placeholder {
+  color: #616061;
+}
+
+.modal-hint {
+  font-size: 11px;
+  color: #616061;
+  line-height: 1.5;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.modal-btn {
+  padding: 8px 18px;
+  border-radius: 6px;
+  border: none;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.modal-btn--cancel {
+  background: transparent;
+  color: #ababad;
+}
+
+.modal-btn--cancel:hover {
+  background: #2d2d30;
+  color: #d1d2d3;
+}
+
+.modal-btn--create {
+  background: #007a5a;
+  color: #fff;
+}
+
+.modal-btn--create:hover:not(:disabled) {
+  background: #148567;
+}
+
+.modal-btn--create:disabled {
+  background: #2d2d30;
+  color: #616061;
+  cursor: default;
+}
