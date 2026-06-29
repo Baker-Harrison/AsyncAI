@@ -1,6 +1,6 @@
 {
   "name": "asyncai",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Persistent AI agents with their own computers",
   "main": "src/main/main.js",
   "scripts": {
