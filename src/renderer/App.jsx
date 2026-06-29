@@ -6,6 +6,8 @@ import ChatArea from './components/ChatArea';
 import MessageInput from './components/MessageInput';
 import TaskModal from './components/TaskModal';
 import UpdateBanner from './components/UpdateBanner';
+import SettingsModal from './components/SettingsModal';
+import TerminalView from './components/TerminalView';
 
 let msgSeq = 0;
 const mkId = () => `ui-${++msgSeq}`;
@@ -18,6 +20,9 @@ function App() {
   const [activeAgentId, setActiveAgentId] = useState(null);
   const [isThinking, setIsThinking]     = useState(false);
   const [showModal, setShowModal]       = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [isFirstLaunch, setIsFirstLaunch] = useState(false);
+  const [activeView, setActiveView]     = useState('chat'); // 'chat' | 'terminal'
 
   // Maps tool-call API id → UI message id
   const toolMsgIds = useRef({});
@@ -27,13 +32,20 @@ function App() {
   // ── Load agents on mount ───────────────────────────────────────────────
   useEffect(() => {
     window.electronAPI.agent.list().then((loaded) => {
-      // Assign UI ids to persisted messages
       const withIds = loaded.map((agent) => ({
         ...agent,
         messages: agent.messages.map((m) => ({ ...m, id: m.id ?? mkId() })),
       }));
       setAgents(withIds);
       if (withIds.length > 0) setActiveAgentId(withIds[0].id);
+    });
+
+    // Show settings on first launch if no API key
+    window.electronAPI.settings.get('opencode_api_key').then((key) => {
+      if (!key) {
+        setIsFirstLaunch(true);
+        setShowSettings(true);
+      }
     });
   }, []);
 
@@ -172,8 +184,18 @@ function App() {
     }
   };
 
+  const handleAgentSelect = (agentId) => {
+    setActiveAgentId(agentId);
+    setActiveView('chat');
+  };
+
   const inputDisabled = !activeAgent || activeAgent.status === 'starting' || isThinking;
   const inputPlaceholder = isThinking ? 'Agent is thinking…' : 'Message your agent…';
+
+  const handleSettingsClose = () => {
+    setShowSettings(false);
+    setIsFirstLaunch(false);
+  };
 
   return (
     <div className="app">
@@ -184,22 +206,33 @@ function App() {
         <Sidebar
           agents={agents}
           activeAgentId={activeAgentId}
-          onAgentSelect={setActiveAgentId}
+          onAgentSelect={handleAgentSelect}
           onNewAgent={() => setShowModal(true)}
+          onOpenSettings={() => setShowSettings(true)}
         />
         <div className="main-panel">
-          <ChatArea
-            agent={activeAgent}
-            isThinking={isThinking}
-            onNewAgent={() => setShowModal(true)}
-          />
-          {activeAgent && activeAgent.status !== 'starting' && (
-            <MessageInput
-              onSend={handleSend}
-              onCommand={handleCommand}
-              disabled={inputDisabled}
-              placeholder={inputPlaceholder}
+          {activeView === 'terminal' && activeAgent ? (
+            <TerminalView
+              agent={activeAgent}
+              onBack={() => setActiveView('chat')}
             />
+          ) : (
+            <>
+              <ChatArea
+                agent={activeAgent}
+                isThinking={isThinking}
+                onNewAgent={() => setShowModal(true)}
+                onOpenTerminal={() => setActiveView('terminal')}
+              />
+              {activeAgent && activeAgent.status !== 'starting' && (
+                <MessageInput
+                  onSend={handleSend}
+                  onCommand={handleCommand}
+                  disabled={inputDisabled}
+                  placeholder={inputPlaceholder}
+                />
+              )}
+            </>
           )}
         </div>
       </div>
@@ -208,6 +241,13 @@ function App() {
         <TaskModal
           onClose={() => setShowModal(false)}
           onCreate={handleCreateAgent}
+        />
+      )}
+
+      {showSettings && (
+        <SettingsModal
+          onClose={handleSettingsClose}
+          isFirstLaunch={isFirstLaunch}
         />
       )}
     </div>

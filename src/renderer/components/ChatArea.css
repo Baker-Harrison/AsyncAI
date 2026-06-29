@@ -134,6 +134,26 @@
   -webkit-app-region: drag;
 }
 
+.terminal-btn {
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  color: #616061;
+  cursor: pointer;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  -webkit-app-region: no-drag;
+}
+
+.terminal-btn:hover {
+  background: #2d2d30;
+  color: #ababad;
+}
+
 .header-title-group {
   display: flex;
   align-items: baseline;

@@ -18,7 +18,7 @@ const db = require('./db');
 
 const execFileAsync = promisify(execFile);
 
-// ── Env ────────────────────────────────────────────────────────────────────
+// ── Env (.env for dev, DB key takes precedence at runtime) ─────────────────
 
 const envPath = path.join(__dirname, '..', '..', '.env');
 if (fs.existsSync(envPath)) {
@@ -187,6 +187,56 @@ ipcMain.handle('agent:clear', async (_, { agentId }) => {
   await harness.clear();
 });
 
+// ── Settings ───────────────────────────────────────────────────────────────
+
+ipcMain.handle('settings:get', async (_, key) => {
+  return db.getSetting(key);
+});
+
+ipcMain.handle('settings:set', async (_, key, value) => {
+  await db.setSetting(key, value);
+  if (key === 'opencode_api_key') process.env.OPENCODE_API_KEY = value;
+});
+
+// ── Terminal ───────────────────────────────────────────────────────────────
+
+const pty = require('node-pty');
+const terminals = new Map(); // agentId → pty process
+
+ipcMain.handle('terminal:create', (_, agentId) => {
+  // Kill existing terminal for this agent if any
+  if (terminals.has(agentId)) {
+    try { terminals.get(agentId).kill(); } catch { /* ignore */ }
+    terminals.delete(agentId);
+  }
+
+  const ptyProcess = pty.spawn('docker', ['exec', '-it', containerName(agentId), 'bash'], {
+    name: 'xterm-256color',
+    cols: 80,
+    rows: 24,
+    cwd: process.env.HOME || process.env.USERPROFILE || '/',
+    env: { ...process.env, TERM: 'xterm-256color' },
+  });
+
+  ptyProcess.onData((data) => {
+    mainWindow?.webContents.send('terminal-data', { agentId, data });
+  });
+
+  ptyProcess.onExit(({ exitCode }) => {
+    terminals.delete(agentId);
+    mainWindow?.webContents.send('terminal-exit', { agentId, exitCode });
+  });
+
+  terminals.set(agentId, ptyProcess);
+});
+
+ipcMain.on('terminal:input',  (_, { agentId, data })       => terminals.get(agentId)?.write(data));
+ipcMain.on('terminal:resize', (_, { agentId, cols, rows }) => terminals.get(agentId)?.resize(cols, rows));
+ipcMain.on('terminal:destroy', (_, agentId) => {
+  try { terminals.get(agentId)?.kill(); } catch { /* ignore */ }
+  terminals.delete(agentId);
+});
+
 // ── Window ─────────────────────────────────────────────────────────────────
 
 let mainWindow;
@@ -248,6 +298,10 @@ function setupAutoUpdater() {
 Menu.setApplicationMenu(null);
 
 app.whenReady().then(async () => {
+  // Load stored API key (overrides .env)
+  const storedKey = await db.getSetting('opencode_api_key').catch(() => null);
+  if (storedKey) process.env.OPENCODE_API_KEY = storedKey;
+
   createWindow();
 
   // Check for updates in production only
@@ -283,8 +337,12 @@ app.whenReady().then(async () => {
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 
-// Stop all containers cleanly on quit
+// Stop all containers and terminals cleanly on quit
 app.on('before-quit', async () => {
+  for (const ptyProcess of terminals.values()) {
+    try { ptyProcess.kill(); } catch { /* ignore */ }
+  }
+  terminals.clear();
   const agents = await db.listAgents().catch(() => []);
   await Promise.allSettled(agents.map((a) => stopContainer(a.id)));
 });

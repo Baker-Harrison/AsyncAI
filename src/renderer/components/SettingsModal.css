@@ -1,0 +1,123 @@
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.settings-modal {
+  background: #1e1f22;
+  border: 1px solid #3a3a3d;
+  border-radius: 10px;
+  width: 420px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+}
+
+.settings-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 20px 0;
+}
+
+.settings-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #d1d2d3;
+  margin: 0;
+}
+
+.settings-close-btn {
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: #79797b;
+  font-size: 20px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  line-height: 1;
+}
+
+.settings-close-btn:hover {
+  background: #2d2d30;
+  color: #d1d2d3;
+}
+
+.settings-body {
+  padding: 16px 20px;
+}
+
+.settings-welcome {
+  font-size: 13px;
+  color: #ababad;
+  margin: 0 0 16px;
+  line-height: 1.5;
+}
+
+.settings-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: #ababad;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 8px;
+}
+
+.settings-input {
+  width: 100%;
+  padding: 9px 12px;
+  background: #0d0e10;
+  border: 1px solid #3a3a3d;
+  border-radius: 6px;
+  color: #d1d2d3;
+  font-size: 13px;
+  font-family: 'SF Mono', 'Consolas', monospace;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.settings-input:focus {
+  border-color: #1d6aff;
+}
+
+.settings-hint {
+  font-size: 11px;
+  color: #616061;
+  margin: 6px 0 0;
+}
+
+.settings-footer {
+  padding: 4px 20px 18px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.settings-save-btn {
+  padding: 8px 20px;
+  background: #1d6aff;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.settings-save-btn:hover:not(:disabled) {
+  background: #1558e0;
+}
+
+.settings-save-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

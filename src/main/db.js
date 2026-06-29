@@ -38,6 +38,11 @@ async function getDb() {
       ended_at   INTEGER
     );
 
+    CREATE TABLE IF NOT EXISTS settings (
+      key   TEXT PRIMARY KEY,
+      value TEXT
+    );
+
     CREATE TABLE IF NOT EXISTS messages (
       id           INTEGER PRIMARY KEY AUTOINCREMENT,
       agent_id     TEXT    NOT NULL,
@@ -204,9 +209,27 @@ async function searchHistory(agentId, query) {
   return results;
 }
 
+// ── Settings ────────────────────────────────────────────────────────────────
+
+async function getSetting(key) {
+  const d    = await getDb();
+  const stmt = d.prepare('SELECT value FROM settings WHERE key = ?');
+  stmt.bind([key]);
+  const row = stmt.step() ? stmt.getAsObject() : null;
+  stmt.free();
+  return row ? row.value : null;
+}
+
+async function setSetting(key, value) {
+  const d = await getDb();
+  d.run('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', [key, value]);
+  persist();
+}
+
 module.exports = {
   createAgent, listAgents,
   createSession, endSession, getCurrentSession,
   addMessage, getMessages,
   searchHistory,
+  getSetting, setSetting,
 };

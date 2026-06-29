@@ -1,0 +1,59 @@
+.terminal-view {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  background: #0d0e10;
+}
+
+.terminal-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+  height: 49px;
+  border-bottom: 1px solid #2d2d30;
+  flex-shrink: 0;
+  background: #1a1d21;
+  -webkit-app-region: drag;
+}
+
+.terminal-back-btn {
+  padding: 5px 12px;
+  background: #2d2d30;
+  border: none;
+  border-radius: 6px;
+  color: #d1d2d3;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  -webkit-app-region: no-drag;
+}
+
+.terminal-back-btn:hover {
+  background: #3a3a3d;
+}
+
+.terminal-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #ababad;
+  -webkit-app-region: no-drag;
+}
+
+.terminal-container {
+  flex: 1;
+  min-height: 0;
+  padding: 8px;
+  box-sizing: border-box;
+}
+
+/* xterm overrides */
+.terminal-container .xterm {
+  height: 100%;
+}
+
+.terminal-container .xterm-viewport {
+  background: #0d0e10 !important;
+}
