@@ -158,7 +158,7 @@
   width: 32px;
   height: 32px;
   border: none;
-  border-radius: 4px;
+  border-radius: 6px;
   background: #007a5a;
   color: #fff;
   cursor: pointer;
@@ -167,6 +167,7 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  transition: background 0.15s;
 }
 
 .send-btn:hover:not(:disabled) { background: #148567; }
@@ -175,4 +176,8 @@
   background: #2d2d30;
   color: #616061;
   cursor: default;
+}
+
+.send-btn:not(:disabled):active {
+  background: #005f45;
 }

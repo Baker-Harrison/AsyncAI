@@ -109,7 +109,9 @@ function MessageInput({ onSend, onCommand, disabled, placeholder }) {
           className="send-btn"
           disabled={!text.trim() || disabled}
         >
-          ➤
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M8 3L13 9H10V13H6V9H3L8 3Z" fill="currentColor"/>
+          </svg>
         </button>
       </form>
     </div>
