@@ -65,7 +65,6 @@
   "dependencies": {
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",
-    "agentation": "^3.0.2",
     "electron-updater": "^6.8.9",
     "marked": "^18.0.5",
     "node-pty": "^1.1.0",

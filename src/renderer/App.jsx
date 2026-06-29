@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Agentation } from 'agentation';
 import TitleBar from './components/TitleBar';
 import Sidebar from './components/Sidebar';
 import ChatArea from './components/ChatArea';
@@ -200,7 +199,6 @@ function App() {
   return (
     <div className="app">
       <TitleBar />
-      <Agentation />
       <UpdateBanner />
       <div className="app-body">
         <Sidebar
