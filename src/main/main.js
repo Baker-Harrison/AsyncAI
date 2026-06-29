@@ -2,9 +2,8 @@
 
 if (process.env.NODE_ENV === 'development') {
   require('electron-reload')(__dirname, {
-    electron: require('electron'),
+    electron: process.execPath,
     watchRenderer: true,
-    forceHardReset: false,
   });
 }
 
