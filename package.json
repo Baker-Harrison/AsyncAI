@@ -1,6 +1,6 @@
 {
   "name": "asyncai",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Persistent AI agents with their own computers",
   "author": "Baker-Harrison",
   "main": "src/main/main.js",
