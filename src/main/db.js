@@ -281,6 +281,20 @@ async function searchHistory(agentId, query) {
 
 // ── Settings ────────────────────────────────────────────────────────────────
 
+async function deleteAgent(agentId) {
+  const d = await getDb();
+  d.run('DELETE FROM messages WHERE agent_id = ?', [agentId]);
+  d.run('DELETE FROM sessions WHERE agent_id = ?', [agentId]);
+  d.run('DELETE FROM agents WHERE id = ?', [agentId]);
+  persist();
+}
+
+async function renameAgent(agentId, name) {
+  const d = await getDb();
+  d.run('UPDATE agents SET name = ? WHERE id = ?', [name, agentId]);
+  persist();
+}
+
 async function getSetting(key) {
   const d    = await getDb();
   const stmt = d.prepare('SELECT value FROM settings WHERE key = ?');
@@ -297,7 +311,7 @@ async function setSetting(key, value) {
 }
 
 module.exports = {
-  createAgent, listAgents,
+  createAgent, listAgents, deleteAgent, renameAgent,
   createSession, endSession, getCurrentSession,
   addMessage, getMessages,
   searchHistory,

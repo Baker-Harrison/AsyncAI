@@ -171,9 +171,29 @@ ipcMain.handle('agent:create', async (_, { name }) => {
   return { id, name, status: 'starting', messages: [] };
 });
 
-ipcMain.handle('agent:chat', async (_, { agentId, text }) => {
+ipcMain.handle('agent:chat', async (_, { agentId, text, files }) => {
   const harness = harnesses.get(agentId);
   if (!harness) throw new Error(`No harness for agent ${agentId}`);
+
+  // If there are files, copy them into the container first
+  if (files && files.length > 0) {
+    for (const file of files) {
+      const destPath = `/home/agent/${file.name}`;
+      // Use docker cp to copy file into container
+      try {
+        const tempFile = path.join(app.getPath('temp'), file.name);
+        // Write the base64-decoded content to a temp file, then docker cp it
+        const buf = Buffer.from(file.data, 'base64');
+        fs.writeFileSync(tempFile, buf);
+        await execFileAsync('docker', ['cp', tempFile, `${containerName(agentId)}:${destPath}`]);
+        fs.unlinkSync(tempFile);
+      } catch (e) {
+        console.error('[agent:chat] file upload error:', e.message);
+        throw new Error(`Failed to upload file ${file.name}: ${e.message}`);
+      }
+    }
+  }
+
   await harness.chat(text);
 });
 
@@ -185,6 +205,32 @@ ipcMain.handle('agent:clear', async (_, { agentId }) => {
   const harness = harnesses.get(agentId);
   if (!harness) throw new Error(`No harness for agent ${agentId}`);
   await harness.clear();
+});
+
+ipcMain.handle('agent:delete', async (_, { agentId }) => {
+  // Stop & remove container
+  try {
+    await execFileAsync('docker', ['stop', containerName(agentId)]);
+  } catch { /* ignore */ }
+  try {
+    await execFileAsync('docker', ['rm', '-f', containerName(agentId)]);
+  } catch { /* ignore */ }
+
+  // Remove harness
+  harnesses.delete(agentId);
+
+  // Remove from DB
+  await db.deleteAgent(agentId);
+
+  mainWindow?.webContents.send('agent-deleted', { agentId });
+});
+
+ipcMain.handle('agent:rename', async (_, { agentId, name }) => {
+  await db.renameAgent(agentId, name);
+  // Update harness if it exists
+  const harness = harnesses.get(agentId);
+  if (harness) harness.agentName = name;
+  mainWindow?.webContents.send('agent-renamed', { agentId, name });
 });
 
 // ── Settings ───────────────────────────────────────────────────────────────

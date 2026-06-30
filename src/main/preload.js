@@ -11,12 +11,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   agent: {
     list:   ()              => ipcRenderer.invoke('agent:list'),
     create: (name)          => ipcRenderer.invoke('agent:create', { name }),
-    chat:   (agentId, text) => ipcRenderer.invoke('agent:chat',   { agentId, text }),
+    chat:   (agentId, text, files) => ipcRenderer.invoke('agent:chat', { agentId, text, files }),
     abort:    (agentId)       => ipcRenderer.invoke('agent:abort', { agentId }),
     clear:    (agentId)       => ipcRenderer.invoke('agent:clear', { agentId }),
+    delete:   (agentId)       => ipcRenderer.invoke('agent:delete', { agentId }),
+    rename:   (agentId, name) => ipcRenderer.invoke('agent:rename', { agentId, name }),
     onEvent:   (cb) => ipcRenderer.on('agent-event',   (_, d) => cb(d)),
     onStatus:  (cb) => ipcRenderer.on('agent-status',  (_, d) => cb(d)),
     onCleared: (cb) => ipcRenderer.on('agent-cleared', (_, d) => cb(d)),
+    onDeleted: (cb) => ipcRenderer.on('agent-deleted', (_, d) => cb(d)),
+    onRenamed: (cb) => ipcRenderer.on('agent-renamed', (_, d) => cb(d)),
   },
 
   update: {

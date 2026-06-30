@@ -90,6 +90,26 @@ const systemPrompt = (name) =>
   `- Use \`search_history\` when the user references something you don't have context for — search before admitting you don't know.\n` +
   `- If \`search_history\` returns nothing relevant, say you don't know and ask the user. Never guess or invent context.`;
 
+// ── SSE parser ─────────────────────────────────────────────────────────────
+
+function parseSSE(chunk) {
+  const lines = chunk.split('\n');
+  const events = [];
+  for (const line of lines) {
+    if (line.startsWith('data: ')) {
+      const data = line.slice(6);
+      if (data === '[DONE]') {
+        events.push({ type: 'done' });
+      } else {
+        try {
+          events.push({ type: 'data', json: JSON.parse(data) });
+        } catch { /* skip malformed */ }
+      }
+    }
+  }
+  return events;
+}
+
 // ── AgentHarness ───────────────────────────────────────────────────────────
 
 class AgentHarness {
@@ -109,9 +129,8 @@ class AgentHarness {
   }
 
   async clear() {
-    await this.onClear(this.sessionId); // onClear sets this.sessionId to the new session ID
+    await this.onClear(this.sessionId);
     this.modelHistory = [];
-    // DO NOT set this.sessionId = null here — onClear already updated it
   }
 
   abort() { this._aborted = true; }
@@ -141,13 +160,28 @@ class AgentHarness {
     while (!this._aborted) {
       this.onEvent({ type: 'thinking' });
 
-      const res    = await this._callModel();
-      const choice = res.choices?.[0];
-      if (!choice) throw new Error('Empty response from model');
-      if (choice.finish_reason === 'length') throw new Error('Response truncated — try a shorter request');
+      // Try streaming first, fall back to non-streaming
+      let result;
+      try {
+        result = await this._callModelStream();
+      } catch (e) {
+        // If streaming fails (e.g. not supported), fall back to non-streaming
+        console.warn('[agent] streaming failed, falling back to non-streaming:', e.message);
+        const res = await this._callModel();
+        const choice = res.choices?.[0];
+        if (!choice) throw new Error('Empty response from model');
+        if (choice.finish_reason === 'length') throw new Error('Response truncated — try a shorter request');
+        result = { msg: choice.message, finishReason: choice.finish_reason };
+      }
 
-      const msg       = choice.message;
+      const msg       = result.msg;
       const toolCalls = msg.tool_calls ?? [];
+
+      // Emit final text if we streamed but didn't emit a final 'text' event yet
+      if (msg.content && !this._streamedTextFinalEmitted) {
+        this.onEvent({ type: 'text', text: msg.content });
+      }
+      this._streamedTextFinalEmitted = false;
 
       // Persist assistant message
       await this.saveMessage({
@@ -158,7 +192,6 @@ class AgentHarness {
       });
       this.modelHistory.push(msg);
 
-      if (msg.content) this.onEvent({ type: 'text', text: msg.content });
       if (toolCalls.length === 0) return; // model is done
 
       // Execute tools
@@ -205,6 +238,132 @@ class AgentHarness {
       this.modelHistory.push(...results);
     }
   }
+
+  // ── Streaming API call ─────────────────────────────────────────────────
+
+  async _callModelStream() {
+    const apiKey = process.env.OPENCODE_API_KEY;
+    if (!apiKey) throw new Error('OPENCODE_API_KEY not set in .env');
+
+    const controller = new AbortController();
+    const timer      = setTimeout(() => controller.abort(), FETCH_TIMEOUT);
+
+    let res;
+    try {
+      res = await fetch(`${LLM_BASE_URL}/chat/completions`, {
+        method:  'POST',
+        signal:  controller.signal,
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+        body:    JSON.stringify({
+          model:      LLM_MODEL,
+          messages:   [{ role: 'system', content: systemPrompt(this.agentName) }, ...this.modelHistory],
+          tools:      TOOLS,
+          tool_choice: 'auto',
+          max_tokens: 8192,
+          stream:     true,
+        }),
+      });
+    } catch (e) {
+      if (e.name === 'AbortError') throw new Error(`Request timed out after ${FETCH_TIMEOUT / 1000}s`);
+      throw e;
+    } finally {
+      clearTimeout(timer);
+    }
+
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`LLM ${res.status}: ${body.slice(0, 300)}`);
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    // Accumulated results
+    let content = '';
+    const toolCalls = {}; // index -> { id, type, function: { name, arguments } }
+
+    let parseError = null;
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        // Keep the last potentially incomplete line in buffer
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (this._aborted) {
+            controller.abort();
+            throw new Error('Aborted');
+          }
+
+          if (!line.startsWith('data: ')) continue;
+          const payload = line.slice(6);
+          if (payload === '[DONE]') continue;
+
+          let parsed;
+          try { parsed = JSON.parse(payload); } catch { continue; }
+
+          const choice = parsed.choices?.[0];
+          if (!choice) continue;
+          if (choice.finish_reason === 'length') {
+            parseError = new Error('Response truncated — try a shorter request');
+            break;
+          }
+
+          const delta = choice.delta || {};
+
+          // Accumulate content
+          if (delta.content) {
+            content += delta.content;
+            this.onEvent({ type: 'text-chunk', text: delta.content });
+          }
+
+          // Accumulate tool calls (streaming tool_calls come as index-based deltas)
+          if (delta.tool_calls) {
+            for (const tc of delta.tool_calls) {
+              const idx = tc.index;
+              if (!toolCalls[idx]) {
+                toolCalls[idx] = { id: '', type: 'function', function: { name: '', arguments: '' } };
+              }
+              if (tc.id) toolCalls[idx].id += tc.id;
+              if (tc.function?.name) toolCalls[idx].function.name += tc.function.name;
+              if (tc.function?.arguments) toolCalls[idx].function.arguments += tc.function.arguments;
+            }
+          }
+        }
+
+        if (parseError) break;
+      }
+    } finally {
+      reader.releaseLock();
+    }
+
+    if (parseError) throw parseError;
+
+    // Build the final message
+    const finalToolCalls = Object.values(toolCalls);
+
+    // Emit final text event (the whole content accumulated)
+    if (content) {
+      this._streamedTextFinalEmitted = false; // will be emitted in _loop
+    }
+
+    return {
+      msg: {
+        role: 'assistant',
+        content: content || null,
+        tool_calls: finalToolCalls.length > 0 ? finalToolCalls : undefined,
+      },
+      finishReason: 'stop',
+    };
+  }
+
+  // ── Non-streaming fallback ─────────────────────────────────────────────
 
   async _callModel() {
     const apiKey = process.env.OPENCODE_API_KEY;
