@@ -14,7 +14,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     chat:   (agentId, text, files) => ipcRenderer.invoke('agent:chat', { agentId, text, files }),
     abort:    (agentId)       => ipcRenderer.invoke('agent:abort', { agentId }),
     clear:    (agentId)       => ipcRenderer.invoke('agent:clear', { agentId }),
-<<<<<<< HEAD
     delete:   (agentId)       => ipcRenderer.invoke('agent:delete', { agentId }),
     rename:   (agentId, name) => ipcRenderer.invoke('agent:rename', { agentId, name }),
     onEvent: (cb) => {
