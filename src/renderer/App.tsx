@@ -55,7 +55,7 @@ function App() {
     const { agent } = window.electronAPI;
 
     // Context cleared — wipe UI messages for this agent
-    agent.onCleared(({ agentId }) => {
+    const removeCleared = agent.onCleared(({ agentId }) => {
       setAgents((prev) =>
         prev.map((a) =>
           a.id !== agentId ? a : { ...a, messages: [] }
@@ -64,7 +64,7 @@ function App() {
     });
 
     // Agent deleted — remove from list
-    agent.onDeleted(({ agentId }) => {
+    const removeDeleted = agent.onDeleted(({ agentId }) => {
       setAgents((prev) => {
         const next = prev.filter((a) => a.id !== agentId);
         if (activeAgentId === agentId) {
@@ -75,7 +75,7 @@ function App() {
     });
 
     // Agent renamed — update name in list
-    agent.onRenamed(({ agentId, name }) => {
+    const removeRenamed = agent.onRenamed(({ agentId, name }) => {
       setAgents((prev) =>
         prev.map((a) =>
           a.id !== agentId ? a : { ...a, name }
@@ -84,7 +84,7 @@ function App() {
     });
 
     // Container ready / error status updates
-    agent.onStatus(({ agentId, status, error }) => {
+    const removeStatus = agent.onStatus(({ agentId, status, error }) => {
       setAgents((prev) =>
         prev.map((a) => {
           if (a.id !== agentId) return a;
@@ -104,7 +104,7 @@ function App() {
     const streamingMsgIds: Record<string, string> = {};
 
     // Streaming events from the agent harness
-    agent.onEvent((event: { agentId: string; type: string; [key: string]: unknown }) => {
+    const removeEvent = agent.onEvent((event: { agentId: string; type: string; [key: string]: unknown }) => {
       const { agentId, type, ...payload } = event;
       switch (type) {
         case 'thinking':
@@ -230,7 +230,15 @@ function App() {
           break;
       }
     });
-  }, [activeAgentId]);
+
+    return () => {
+      removeCleared?.();
+      removeStatus?.();
+      removeEvent?.();
+      removeDeleted?.();
+      removeRenamed?.();
+    };
+  }, []);
 
   // ── Create agent ───────────────────────────────────────────────────────
   const handleCreateAgent = async ({ name }: { name: string }) => {

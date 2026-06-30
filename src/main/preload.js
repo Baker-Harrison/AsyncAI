@@ -14,13 +14,34 @@ contextBridge.exposeInMainWorld('electronAPI', {
     chat:   (agentId, text, files) => ipcRenderer.invoke('agent:chat', { agentId, text, files }),
     abort:    (agentId)       => ipcRenderer.invoke('agent:abort', { agentId }),
     clear:    (agentId)       => ipcRenderer.invoke('agent:clear', { agentId }),
+<<<<<<< HEAD
     delete:   (agentId)       => ipcRenderer.invoke('agent:delete', { agentId }),
     rename:   (agentId, name) => ipcRenderer.invoke('agent:rename', { agentId, name }),
-    onEvent:   (cb) => ipcRenderer.on('agent-event',   (_, d) => cb(d)),
-    onStatus:  (cb) => ipcRenderer.on('agent-status',  (_, d) => cb(d)),
-    onCleared: (cb) => ipcRenderer.on('agent-cleared', (_, d) => cb(d)),
-    onDeleted: (cb) => ipcRenderer.on('agent-deleted', (_, d) => cb(d)),
-    onRenamed: (cb) => ipcRenderer.on('agent-renamed', (_, d) => cb(d)),
+    onEvent: (cb) => {
+      const listener = (_, d) => cb(d);
+      ipcRenderer.on('agent-event', listener);
+      return () => ipcRenderer.removeListener('agent-event', listener);
+    },
+    onStatus: (cb) => {
+      const listener = (_, d) => cb(d);
+      ipcRenderer.on('agent-status', listener);
+      return () => ipcRenderer.removeListener('agent-status', listener);
+    },
+    onCleared: (cb) => {
+      const listener = (_, d) => cb(d);
+      ipcRenderer.on('agent-cleared', listener);
+      return () => ipcRenderer.removeListener('agent-cleared', listener);
+    },
+    onDeleted: (cb) => {
+      const listener = (_, d) => cb(d);
+      ipcRenderer.on('agent-deleted', listener);
+      return () => ipcRenderer.removeListener('agent-deleted', listener);
+    },
+    onRenamed: (cb) => {
+      const listener = (_, d) => cb(d);
+      ipcRenderer.on('agent-renamed', listener);
+      return () => ipcRenderer.removeListener('agent-renamed', listener);
+    },
   },
 
   update: {
