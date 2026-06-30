@@ -6,6 +6,7 @@
   flex-direction: column;
   border-right: 1px solid #2d2d30;
   user-select: none;
+  transition: width 0.2s ease, min-width 0.2s ease;
 }
 
 .workspace-header {
@@ -166,6 +167,128 @@
   padding: 4px 8px;
   display: flex;
   align-items: center;
+}
+
+.sidebar-footer--collapsed {
+  padding: 4px;
+  justify-content: center;
+}
+
+/* ── Collapsed sidebar ────────────────────────────────────────────────── */
+
+.sidebar--collapsed {
+  width: 52px;
+  min-width: 52px;
+}
+
+.sidebar-scroll--collapsed {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 0;
+}
+
+.sidebar-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 14px;
+  color: #ababad;
+  cursor: pointer;
+  position: relative;
+  background: transparent;
+  border: none;
+  transition: background 0.15s;
+}
+
+.sidebar-icon:hover {
+  background: #27242c;
+  color: #d1d2d3;
+}
+
+.sidebar-icon.active {
+  background: #1164a3;
+  color: #fff;
+}
+
+.sidebar-icon--add {
+  margin-top: 4px;
+  font-size: 20px;
+  font-weight: 400;
+  color: #616061;
+}
+
+.sidebar-icon--add:hover {
+  color: #d1d2d3;
+}
+
+.sidebar-icon .status-dot {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 10px;
+  height: 10px;
+  border: 2px solid #19171d;
+}
+
+/* ── Delete button on hover ────────────────────────────────────────────── */
+
+.task-item-delete-btn {
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: #616061;
+  cursor: pointer;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.1s, background 0.1s;
+}
+
+.task-item:hover .task-item-delete-btn {
+  opacity: 1;
+}
+
+.task-item-delete-btn:hover {
+  background: rgba(224, 30, 90, 0.15);
+  color: #e01e5a;
+}
+
+.task-item.active .task-item-delete-btn {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.task-item.active .task-item-delete-btn:hover {
+  color: #e01e5a;
+  background: rgba(224, 30, 90, 0.2);
+}
+
+/* ── Rename input ──────────────────────────────────────────────────────── */
+
+.task-item-rename-input {
+  width: 100%;
+  border: none;
+  background: rgba(255, 255, 255, 0.08);
+  color: #d1d2d3;
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  padding: 2px 6px;
+  border-radius: 4px;
+  box-sizing: border-box;
+}
+
+.task-item.active .task-item-rename-input {
+  background: rgba(255, 255, 255, 0.15);
 }
 
 .settings-gear-btn {

@@ -90,6 +90,26 @@ const systemPrompt = (name) =>
   `- Use \`search_history\` when the user references something you don't have context for — search before admitting you don't know.\n` +
   `- If \`search_history\` returns nothing relevant, say you don't know and ask the user. Never guess or invent context.`;
 
+// ── SSE parser ─────────────────────────────────────────────────────────────
+
+function parseSSE(chunk) {
+  const lines = chunk.split('\n');
+  const events = [];
+  for (const line of lines) {
+    if (line.startsWith('data: ')) {
+      const data = line.slice(6);
+      if (data === '[DONE]') {
+        events.push({ type: 'done' });
+      } else {
+        try {
+          events.push({ type: 'data', json: JSON.parse(data) });
+        } catch { /* skip malformed */ }
+      }
+    }
+  }
+  return events;
+}
+
 // ── AgentHarness ───────────────────────────────────────────────────────────
 
 class AgentHarness {
@@ -106,12 +126,15 @@ class AgentHarness {
     this._aborted      = false;
 
     this.modelHistory = history.map((m) => JSON.parse(m.model_json));
+    // Tracks whether the final 'text' event was emitted after streaming.
+    // Reset at the start of each streaming call; set to true once emitted
+    // so _loop() doesn't double-emit the full content.
+    this._streamedTextFinalEmitted = false;
   }
 
   async clear() {
-    await this.onClear(this.sessionId); // onClear sets this.sessionId to the new session ID
+    await this.onClear(this.sessionId);
     this.modelHistory = [];
-    // DO NOT set this.sessionId = null here — onClear already updated it
   }
 
   abort() { this._aborted = true; }
@@ -141,13 +164,28 @@ class AgentHarness {
     while (!this._aborted) {
       this.onEvent({ type: 'thinking' });
 
-      const res    = await this._callModel();
-      const choice = res.choices?.[0];
-      if (!choice) throw new Error('Empty response from model');
-      if (choice.finish_reason === 'length') throw new Error('Response truncated — try a shorter request');
+      // Try streaming first, fall back to non-streaming
+      let result;
+      try {
+        result = await this._callModelStream();
+      } catch (e) {
+        // If streaming fails (e.g. not supported), fall back to non-streaming
+        console.warn('[agent] streaming failed, falling back to non-streaming:', e.message);
+        const res = await this._callModel();
+        const choice = res.choices?.[0];
+        if (!choice) throw new Error('Empty response from model');
+        if (choice.finish_reason === 'length') throw new Error('Response truncated — try a shorter request');
+        result = { msg: choice.message, finishReason: choice.finish_reason };
+      }
 
-      const msg       = choice.message;
+      const msg       = result.msg;
       const toolCalls = msg.tool_calls ?? [];
+
+      // Emit final text if we streamed but didn't emit a final 'text' event yet
+      if (msg.content && !this._streamedTextFinalEmitted) {
+        this.onEvent({ type: 'text', text: msg.content });
+      }
+      this._streamedTextFinalEmitted = false;
 
       // Persist assistant message
       await this.saveMessage({
@@ -158,7 +196,6 @@ class AgentHarness {
       });
       this.modelHistory.push(msg);
 
-      if (msg.content) this.onEvent({ type: 'text', text: msg.content });
       if (toolCalls.length === 0) return; // model is done
 
       // Execute tools
@@ -205,6 +242,167 @@ class AgentHarness {
       this.modelHistory.push(...results);
     }
   }
+
+  // ── Streaming API call ─────────────────────────────────────────────────
+  //
+  // Makes a streaming request to the LLM API, emitting 'text-chunk' events
+  // as content arrives, and accumulating tool_calls from delta chunks.
+  // On success, returns the assembled message object.
+  // On error, throws so _loop() can fall back or surface the error.
+  //
+  // The _streamedTextFinalEmitted flag prevents _loop() from double-emitting
+  // the full content as a 'text' event (since chunks were already streamed).
+
+  async _callModelStream() {
+    const apiKey = process.env.OPENCODE_API_KEY;
+    if (!apiKey) throw new Error('OPENCODE_API_KEY not set in .env');
+
+    this._streamedTextFinalEmitted = false;
+
+    const controller = new AbortController();
+    const timer      = setTimeout(() => controller.abort(), FETCH_TIMEOUT);
+
+    let res;
+    try {
+      res = await fetch(`${LLM_BASE_URL}/chat/completions`, {
+        method:  'POST',
+        signal:  controller.signal,
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+        body:    JSON.stringify({
+          model:      LLM_MODEL,
+          messages:   [{ role: 'system', content: systemPrompt(this.agentName) }, ...this.modelHistory],
+          tools:      TOOLS,
+          tool_choice: 'auto',
+          max_tokens: 8192,
+          stream:     true,
+        }),
+      });
+    } catch (e) {
+      clearTimeout(timer);
+      if (e.name === 'AbortError') throw new Error(`Request timed out after ${FETCH_TIMEOUT / 1000}s`);
+      throw e;
+    } finally {
+      clearTimeout(timer);
+    }
+
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`LLM ${res.status}: ${body.slice(0, 300)}`);
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    // Accumulated results
+    let content = '';
+    const toolCalls = {}; // index -> { id, type, function: { name, arguments } }
+    let streamError = null;
+
+    try {
+      while (true) {
+        let chunk;
+        try {
+          const { done, value } = await reader.read();
+          if (done) break;
+          chunk = value;
+        } catch (e) {
+          // Stream read error (e.g. network interruption mid-stream)
+          streamError = new Error(`Stream interrupted: ${e.message}`);
+          // Emit whatever content we got so far before failing
+          if (content) {
+            this.onEvent({ type: 'text', text: content });
+            this._streamedTextFinalEmitted = true;
+          }
+          break;
+        }
+
+        if (this._aborted) {
+          controller.abort();
+          // Emit partial content if we have any
+          if (content) {
+            this.onEvent({ type: 'text', text: content });
+            this._streamedTextFinalEmitted = true;
+          }
+          throw new Error('Aborted');
+        }
+
+        buffer += decoder.decode(chunk, { stream: true });
+        const lines = buffer.split('\n');
+        // Keep the last potentially incomplete line in buffer
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const payload = line.slice(6);
+          if (payload === '[DONE]') continue;
+
+          let parsed;
+          try { parsed = JSON.parse(payload); } catch { continue; }
+
+          const choice = parsed.choices?.[0];
+          if (!choice) continue;
+          if (choice.finish_reason === 'length') {
+            streamError = new Error('Response truncated — try a shorter request');
+            break;
+          }
+
+          const delta = choice.delta || {};
+
+          // Accumulate and emit text chunks as they arrive
+          if (delta.content) {
+            content += delta.content;
+            this.onEvent({ type: 'text-chunk', text: delta.content });
+          }
+
+          // Accumulate tool calls (streaming tool_calls come as index-based deltas)
+          if (delta.tool_calls) {
+            for (const tc of delta.tool_calls) {
+              const idx = tc.index;
+              if (!toolCalls[idx]) {
+                toolCalls[idx] = { id: '', type: 'function', function: { name: '', arguments: '' } };
+              }
+              if (tc.id) toolCalls[idx].id += tc.id;
+              if (tc.function?.name) toolCalls[idx].function.name += tc.function.name;
+              if (tc.function?.arguments) toolCalls[idx].function.arguments += tc.function.arguments;
+            }
+          }
+        }
+
+        if (streamError) break;
+      }
+    } finally {
+      // Always release the reader lock to prevent resource leaks
+      try { reader.releaseLock(); } catch { /* ignore */ }
+    }
+
+    if (streamError) {
+      // If we accumulated partial content, emit it before throwing
+      if (content && !this._streamedTextFinalEmitted) {
+        this.onEvent({ type: 'text', text: content });
+        this._streamedTextFinalEmitted = true;
+      }
+      throw streamError;
+    }
+
+    // Build the final message from accumulated content and tool calls
+    const finalToolCalls = Object.values(toolCalls);
+
+    // _streamedTextFinalEmitted is left as false so _loop() will emit
+    // the final 'text' event with the complete content.
+    // If we already emitted chunks, _loop() will skip the duplicate.
+
+    return {
+      msg: {
+        role: 'assistant',
+        content: content || null,
+        tool_calls: finalToolCalls.length > 0 ? finalToolCalls : undefined,
+      },
+      finishReason: 'stop',
+    };
+  }
+
+  // ── Non-streaming fallback ─────────────────────────────────────────────
 
   async _callModel() {
     const apiKey = process.env.OPENCODE_API_KEY;

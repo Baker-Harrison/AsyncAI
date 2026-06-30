@@ -7,6 +7,7 @@ import TaskModal from './components/TaskModal';
 import UpdateBanner from './components/UpdateBanner';
 import SettingsModal from './components/SettingsModal';
 import TerminalView from './components/TerminalView';
+import type { Agent, Message, FileData } from './types';
 
 let msgSeq = 0;
 const mkId = () => `ui-${++msgSeq}`;
@@ -15,16 +16,17 @@ const now = () =>
   new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
 function App() {
-  const [agents, setAgents]             = useState([]);
-  const [activeAgentId, setActiveAgentId] = useState(null);
+  const [agents, setAgents]             = useState<Agent[]>([]);
+  const [activeAgentId, setActiveAgentId] = useState<string | null>(null);
   const [isThinking, setIsThinking]     = useState(false);
   const [showModal, setShowModal]       = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [isFirstLaunch, setIsFirstLaunch] = useState(false);
-  const [activeView, setActiveView]     = useState('chat'); // 'chat' | 'terminal'
+  const [activeView, setActiveView]     = useState<'chat' | 'terminal'>('chat');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   // Maps tool-call API id → UI message id
-  const toolMsgIds = useRef({});
+  const toolMsgIds = useRef<Record<string, string>>({});
 
   const activeAgent = agents.find((a) => a.id === activeAgentId) ?? null;
 
@@ -61,6 +63,26 @@ function App() {
       );
     });
 
+    // Agent deleted — remove from list
+    agent.onDeleted(({ agentId }) => {
+      setAgents((prev) => {
+        const next = prev.filter((a) => a.id !== agentId);
+        if (activeAgentId === agentId) {
+          setActiveAgentId(next[0]?.id ?? null);
+        }
+        return next;
+      });
+    });
+
+    // Agent renamed — update name in list
+    agent.onRenamed(({ agentId, name }) => {
+      setAgents((prev) =>
+        prev.map((a) =>
+          a.id !== agentId ? a : { ...a, name }
+        )
+      );
+    });
+
     // Container ready / error status updates
     agent.onStatus(({ agentId, status, error }) => {
       setAgents((prev) =>
@@ -78,52 +100,106 @@ function App() {
       );
     });
 
+    // Track the current streaming message ID per agent
+    const streamingMsgIds: Record<string, string> = {};
+
     // Streaming events from the agent harness
-    agent.onEvent(({ agentId, type, ...payload }) => {
+    agent.onEvent((event: { agentId: string; type: string; [key: string]: unknown }) => {
+      const { agentId, type, ...payload } = event;
       switch (type) {
         case 'thinking':
           setIsThinking(true);
           break;
 
+        case 'text-chunk': {
+          // Append to the last assistant message (streaming)
+          setIsThinking(false);
+          const chunkText = payload.text as string;
+          setAgents((prev) =>
+            prev.map((a) => {
+              if (a.id !== agentId) return a;
+              const msgs = [...a.messages];
+              // Find the last assistant message that's the current streaming target
+              const lastMsg = msgs[msgs.length - 1];
+              if (lastMsg && lastMsg.role === 'assistant' && lastMsg._streaming) {
+                // Append to existing streaming message
+                msgs[msgs.length - 1] = {
+                  ...lastMsg,
+                  text: lastMsg.text + chunkText,
+                };
+              } else {
+                // Start a new streaming message
+                const id = mkId();
+                streamingMsgIds[agentId] = id;
+                msgs.push({
+                  id, role: 'assistant' as const, text: chunkText, time: now(), _streaming: true,
+                });
+              }
+              return { ...a, messages: msgs };
+            })
+          );
+          break;
+        }
+
         case 'text':
           setIsThinking(false);
+          const finalText = payload.text as string;
           setAgents((prev) =>
-            prev.map((a) =>
-              a.id !== agentId ? a : {
-                ...a,
-                messages: [...a.messages, { id: mkId(), role: 'assistant', text: payload.text, time: now() }],
+            prev.map((a) => {
+              if (a.id !== agentId) return a;
+              const msgs = [...a.messages];
+              // Find the streaming message and finalize it
+              const streamId = streamingMsgIds[agentId];
+              if (streamId) {
+                const idx = msgs.findIndex((m) => m.id === streamId);
+                if (idx >= 0) {
+                  msgs[idx] = { ...msgs[idx], _streaming: false };
+                }
+                delete streamingMsgIds[agentId];
+              } else {
+                // Non-streaming fallback: create a new message
+                msgs.push({ id: mkId(), role: 'assistant' as const, text: finalText, time: now() });
               }
-            )
+              return { ...a, messages: msgs };
+            })
           );
           break;
 
         case 'tool-start': {
           setIsThinking(false);
           const msgId = mkId();
-          toolMsgIds.current[payload.id] = msgId;
+          toolMsgIds.current[payload.id as string] = msgId;
+          const toolName = payload.tool as string;
+          const toolParams = payload.params as Record<string, unknown>;
+          // Finalize any streaming message before showing tool
           setAgents((prev) =>
-            prev.map((a) =>
-              a.id !== agentId ? a : {
-                ...a,
-                messages: [
-                  ...a.messages,
-                  { id: msgId, role: 'tool', tool: payload.tool, params: payload.params, output: null, status: 'running' },
-                ],
+            prev.map((a) => {
+              if (a.id !== agentId) return a;
+              const msgs = [...a.messages];
+              const streamId = streamingMsgIds[agentId];
+              if (streamId) {
+                const idx = msgs.findIndex((m) => m.id === streamId);
+                if (idx >= 0) msgs[idx] = { ...msgs[idx], _streaming: false };
+                delete streamingMsgIds[agentId];
               }
-            )
+              msgs.push({ id: msgId, role: 'tool' as const, tool: toolName, params: toolParams, output: null, status: 'running' });
+              return { ...a, messages: msgs };
+            })
           );
           break;
         }
 
         case 'tool-done': {
-          const msgId = toolMsgIds.current[payload.id];
-          if (msgId) {
+          const doneMsgId = toolMsgIds.current[payload.id as string];
+          if (doneMsgId) {
+            const doneOutput = payload.output as string | null;
+            const doneStatus = payload.status as string;
             setAgents((prev) =>
               prev.map((a) =>
                 a.id !== agentId ? a : {
                   ...a,
                   messages: a.messages.map((m) =>
-                    m.id !== msgId ? m : { ...m, output: payload.output, status: payload.status }
+                    m.id !== doneMsgId ? m : { ...m, output: doneOutput, status: doneStatus }
                   ),
                 }
               )
@@ -134,11 +210,12 @@ function App() {
 
         case 'error':
           setIsThinking(false);
+          const errMsg = payload.message as string;
           setAgents((prev) =>
             prev.map((a) =>
               a.id !== agentId ? a : {
                 ...a,
-                messages: [...a.messages, { id: mkId(), role: 'system', text: `Error: ${payload.message}`, time: now() }],
+                messages: [...a.messages, { id: mkId(), role: 'system' as const, text: `Error: ${errMsg}`, time: now() }],
               }
             )
           );
@@ -146,36 +223,64 @@ function App() {
 
         case 'done':
           setIsThinking(false);
+          // Clean up streaming state
+          if (streamingMsgIds[agentId]) {
+            delete streamingMsgIds[agentId];
+          }
           break;
       }
     });
-  }, []);
+  }, [activeAgentId]);
 
   // ── Create agent ───────────────────────────────────────────────────────
-  const handleCreateAgent = async ({ name }) => {
+  const handleCreateAgent = async ({ name }: { name: string }) => {
     const agent = await window.electronAPI.agent.create(name);
     setAgents((prev) => [...prev, { ...agent, messages: [] }]);
     setActiveAgentId(agent.id);
   };
 
+  // ── Delete agent ───────────────────────────────────────────────────────
+  const handleDeleteAgent = async (agentId: string) => {
+    await window.electronAPI.agent.delete(agentId);
+    // UI is removed via agent-deleted event from main process
+  };
+
+  // ── Rename agent ───────────────────────────────────────────────────────
+  const handleRenameAgent = async (agentId: string, name: string) => {
+    await window.electronAPI.agent.rename(agentId, name);
+    // UI is updated via agent-renamed event from main process
+  };
+
   // ── Send message ───────────────────────────────────────────────────────
-  const handleSend = async (text) => {
+  const handleSend = async (text: string, files?: FileData[]) => {
     if (!activeAgentId || isThinking) return;
+
+    const fileAttachments = files?.map((f) => ({
+      name: f.name,
+      size: f.size,
+      type: f.type,
+    })) || [];
+
+    let displayText = text;
+    if (fileAttachments.length > 0) {
+      const fileList = fileAttachments.map((f) => `📎 ${f.name}`).join('\n');
+      displayText = text ? `${text}\n\n${fileList}` : fileList;
+    }
 
     setAgents((prev) =>
       prev.map((a) =>
         a.id !== activeAgentId ? a : {
           ...a,
-          messages: [...a.messages, { id: mkId(), role: 'user', text, time: now() }],
+          messages: [...a.messages, { id: mkId(), role: 'user', text: displayText, time: now() }],
         }
       )
     );
 
-    await window.electronAPI.agent.chat(activeAgentId, text);
+    await window.electronAPI.agent.chat(activeAgentId, text, files);
   };
 
   // ── Slash commands ─────────────────────────────────────────────────────
-  const handleCommand = async (name) => {
+  const handleCommand = async (name: string) => {
     if (!activeAgentId) return;
     if (name === '/clear') {
       await window.electronAPI.agent.clear(activeAgentId);
@@ -183,7 +288,7 @@ function App() {
     }
   };
 
-  const handleAgentSelect = (agentId) => {
+  const handleAgentSelect = (agentId: string) => {
     setActiveAgentId(agentId);
     setActiveView('chat');
   };
@@ -198,7 +303,10 @@ function App() {
 
   return (
     <div className="app">
-      <TitleBar />
+      <TitleBar
+        onToggleSidebar={() => setSidebarCollapsed((v) => !v)}
+        sidebarCollapsed={sidebarCollapsed}
+      />
       <UpdateBanner />
       <div className="app-body">
         <Sidebar
@@ -207,8 +315,11 @@ function App() {
           onAgentSelect={handleAgentSelect}
           onNewAgent={() => setShowModal(true)}
           onOpenSettings={() => setShowSettings(true)}
+          onDeleteAgent={handleDeleteAgent}
+          onRenameAgent={handleRenameAgent}
+          collapsed={sidebarCollapsed}
         />
-        <div className="main-panel">
+        <div className={`main-panel ${sidebarCollapsed ? 'main-panel--wide' : ''}`}>
           {activeView === 'terminal' && activeAgent ? (
             <TerminalView
               agent={activeAgent}

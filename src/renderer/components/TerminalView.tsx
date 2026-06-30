@@ -1,13 +1,17 @@
 import React, { useEffect, useRef } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
+import type { Agent } from '../types';
 import '@xterm/xterm/css/xterm.css';
 import './TerminalView.css';
 
-function TerminalView({ agent, onBack }) {
-  const containerRef = useRef(null);
-  const termRef      = useRef(null);
-  const fitAddonRef  = useRef(null);
+interface TerminalViewProps {
+  agent: Agent;
+  onBack: () => void;
+}
+
+function TerminalView({ agent, onBack }: TerminalViewProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const term = new Terminal({
@@ -27,11 +31,11 @@ function TerminalView({ agent, onBack }) {
 
     const fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
-    term.open(containerRef.current);
-    fitAddon.fit();
 
-    termRef.current     = term;
-    fitAddonRef.current = fitAddon;
+    if (containerRef.current) {
+      term.open(containerRef.current);
+    }
+    fitAddon.fit();
 
     window.electronAPI.terminal.create(agent.id);
 
@@ -45,7 +49,7 @@ function TerminalView({ agent, onBack }) {
       }
     });
 
-    term.onData((data) => {
+    term.onData((data: string) => {
       window.electronAPI.terminal.input(agent.id, data);
     });
 

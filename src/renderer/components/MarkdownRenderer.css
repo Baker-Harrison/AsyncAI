@@ -25,7 +25,7 @@
   border-radius: 6px;
   padding: 12px 14px;
   overflow-x: auto;
-  margin: 10px 0;
+  margin: 0;
 }
 
 .markdown-body pre code {
@@ -35,6 +35,48 @@
   font-size: 12px;
   line-height: 1.5;
   color: #c9c9ca;
+}
+
+/* Code block wrapper with copy button */
+.code-block-wrapper {
+  position: relative;
+  margin: 10px 0;
+  border-radius: 6px;
+}
+
+.code-block-wrapper pre {
+  margin: 0;
+}
+
+.copy-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-family: inherit;
+  background: #222529;
+  border: 1px solid #2d2d30;
+  border-radius: 4px;
+  color: #ababad;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s, color 0.15s;
+  z-index: 2;
+}
+
+.code-block-wrapper:hover .copy-btn {
+  opacity: 1;
+}
+
+.copy-btn:hover {
+  background: #2d2d30;
+  color: #d1d2d3;
+}
+
+.copy-btn:active {
+  background: #007a5a;
+  color: #fff;
 }
 
 /* Headings */

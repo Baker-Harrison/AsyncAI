@@ -3,6 +3,104 @@
   position: relative;
 }
 
+.message-input-container--drag {
+  /* Visual feedback when dragging files */
+}
+
+.message-input-container--drag .message-input-form {
+  border-color: #1d6aff;
+  background: rgba(29, 106, 255, 0.05);
+}
+
+/* ── File upload bar ───────────────────────────────────────────────────── */
+
+.file-preview-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 0 6px;
+}
+
+.file-preview-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #222529;
+  border: 1px solid #2d2d30;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 12px;
+  max-width: 240px;
+}
+
+.file-preview-name {
+  color: #c9c9ca;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.file-preview-size {
+  color: #616061;
+  flex-shrink: 0;
+  font-size: 11px;
+}
+
+.file-preview-remove {
+  width: 16px;
+  height: 16px;
+  border: none;
+  background: transparent;
+  color: #616061;
+  cursor: pointer;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  flex-shrink: 0;
+  padding: 0;
+  line-height: 1;
+}
+
+.file-preview-remove:hover {
+  background: rgba(224, 30, 90, 0.15);
+  color: #e01e5a;
+}
+
+/* ── Hidden file input ─────────────────────────────────────────────────── */
+
+.file-input-hidden {
+  display: none;
+}
+
+/* ── Attach button ─────────────────────────────────────────────────────── */
+
+.attach-btn {
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #616061;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  align-self: flex-end;
+  margin-bottom: 0;
+  transition: background 0.15s, color 0.15s;
+  padding: 0;
+}
+
+.attach-btn:hover {
+  background: #2d2d30;
+  color: #ababad;
+}
+
 /* ── Slash command autocomplete ──────────────────────────────────────── */
 
 .slash-menu {

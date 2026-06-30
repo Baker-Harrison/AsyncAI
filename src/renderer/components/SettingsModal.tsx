@@ -1,13 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react';
 import './SettingsModal.css';
 
-function SettingsModal({ onClose, isFirstLaunch }) {
+interface SettingsModalProps {
+  onClose: () => void;
+  isFirstLaunch: boolean;
+}
+
+function SettingsModal({ onClose, isFirstLaunch }: SettingsModalProps) {
   const [apiKey, setApiKey] = useState('');
   const [saved, setSaved] = useState(false);
-  const inputRef = useRef(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    window.electronAPI.settings.get('opencode_api_key').then((val) => {
+    window.electronAPI.settings.get('opencode_api_key').then((val: string | null) => {
       if (val) setApiKey(val);
     });
     inputRef.current?.focus();
@@ -24,7 +29,7 @@ function SettingsModal({ onClose, isFirstLaunch }) {
     }, 700);
   };
 
-  const handleKeyDown = (e) => {
+  const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') handleSave();
     if (e.key === 'Escape' && !isFirstLaunch) onClose();
   };

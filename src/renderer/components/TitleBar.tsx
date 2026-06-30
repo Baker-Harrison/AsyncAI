@@ -1,7 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import './TitleBar.css';
 
-function TitleBar() {
+interface TitleBarProps {
+  onToggleSidebar: () => void;
+  sidebarCollapsed: boolean;
+}
+
+function TitleBar({ onToggleSidebar, sidebarCollapsed }: TitleBarProps) {
   const [isMaximized, setIsMaximized] = useState(false);
   const [platform, setPlatform] = useState('win32');
 
@@ -22,7 +27,17 @@ function TitleBar() {
 
   return (
     <div className="titlebar">
-      <div className="titlebar-sidebar-region">
+      <div className={`titlebar-sidebar-region ${sidebarCollapsed ? 'titlebar-sidebar-region--collapsed' : ''}`}>
+        <button
+          className="titlebar-toggle-btn"
+          onClick={onToggleSidebar}
+          title={sidebarCollapsed ? 'Show sidebar' : 'Hide sidebar'}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+            <line x1="9" y1="3" x2="9" y2="21" />
+          </svg>
+        </button>
         <div className="titlebar-label">
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
             <rect width="4" height="4" rx="1" fill="#36C5F0" />
