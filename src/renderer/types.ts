@@ -65,11 +65,11 @@ export interface ElectronAPI {
     clear: (agentId: string) => Promise<void>;
     delete: (agentId: string) => Promise<void>;
     rename: (agentId: string, name: string) => Promise<void>;
-    onEvent: (cb: (event: AgentEvent) => void) => void;
-    onStatus: (cb: (status: AgentStatus) => void) => void;
-    onCleared: (cb: (data: { agentId: string }) => void) => void;
-    onDeleted: (cb: (data: { agentId: string }) => void) => void;
-    onRenamed: (cb: (data: { agentId: string; name: string }) => void) => void;
+    onEvent: (cb: (event: AgentEvent) => void) => () => void;
+    onStatus: (cb: (status: AgentStatus) => void) => () => void;
+    onCleared: (cb: (data: { agentId: string }) => void) => () => void;
+    onDeleted: (cb: (data: { agentId: string }) => void) => () => void;
+    onRenamed: (cb: (data: { agentId: string; name: string }) => void) => () => void;
   };
 
   update: {
