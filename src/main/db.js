@@ -65,6 +65,15 @@ async function getDb() {
   } catch { /* column already exists */ }
 
   persist();
+
+  // ── Migration: assign orphaned messages to a session ─────────────
+  // Messages created before the session system existed have session_id = NULL.
+  // Previously getMessages() had a fallback that loaded them via "OR session_id IS NULL",
+  // but that broke /clear because old messages leaked back into the current conversation.
+  // We migrate them into appropriate sessions so they're preserved (searchable)
+  // but don't appear in the current chat unless they belong to the current session.
+  migrateOrphanedMessages();
+
   return db;
 }
 
@@ -116,6 +125,64 @@ async function getCurrentSession(agentId) {
   return row;
 }
 
+// ── Migration ───────────────────────────────────────────────────────────────
+
+function migrateOrphanedMessages() {
+  // Find agents that have messages with no session_id
+  const orphanStmt = db.prepare('SELECT DISTINCT agent_id FROM messages WHERE session_id IS NULL');
+  const agentIds = [];
+  while (orphanStmt.step()) agentIds.push(orphanStmt.getAsObject().agent_id);
+  orphanStmt.free();
+
+  if (agentIds.length === 0) return;
+
+  for (const agentId of agentIds) {
+    // Count how many messages this agent has WITH a session_id
+    const withSessStmt = db.prepare('SELECT COUNT(*) AS cnt FROM messages WHERE agent_id = ? AND session_id IS NOT NULL');
+    withSessStmt.bind([agentId]);
+    let hasSessionedMsgs = false;
+    if (withSessStmt.step()) {
+      hasSessionedMsgs = withSessStmt.getAsObject().cnt > 0;
+    }
+    withSessStmt.free();
+
+    // Check if this agent already has a current (open) session
+    const curStmt = db.prepare('SELECT id FROM sessions WHERE agent_id = ? AND ended_at IS NULL LIMIT 1');
+    curStmt.bind([agentId]);
+    let currentSessionId = null;
+    if (curStmt.step()) {
+      currentSessionId = curStmt.getAsObject().id;
+    }
+    curStmt.free();
+
+    if (hasSessionedMsgs && currentSessionId) {
+      // The agent has messages that already belong to sessions AND a current
+      // session exists. The orphaned messages are truly old — they predate the
+      // session system. Archive them in an ended session so they remain
+      // searchable via searchHistory but don't leak into the current chat.
+      const archiveId = `sess-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      db.run('INSERT INTO sessions (id, agent_id, started_at, ended_at) VALUES (?, ?, ?, ?)',
+        [archiveId, agentId, Date.now(), Date.now()]);
+      db.run('UPDATE messages SET session_id = ? WHERE agent_id = ? AND session_id IS NULL',
+        [archiveId, agentId]);
+    } else {
+      // Either all messages are orphaned (no sessioned msgs yet), or there's no
+      // current session. In both cases, create (or reuse) a current session and
+      // assign the orphaned messages to it so the user keeps their conversation.
+      let targetSessionId = currentSessionId;
+      if (!targetSessionId) {
+        targetSessionId = `sess-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+        db.run('INSERT INTO sessions (id, agent_id, started_at) VALUES (?, ?, ?)',
+          [targetSessionId, agentId, Date.now()]);
+      }
+      db.run('UPDATE messages SET session_id = ? WHERE agent_id = ? AND session_id IS NULL',
+        [targetSessionId, agentId]);
+    }
+  }
+
+  persist();
+}
+
 // ── Messages ────────────────────────────────────────────────────────────────
 
 async function addMessage({ agentId, sessionId, role, modelJson, displayText, toolCallId, toolName, toolParams, toolOutput, toolStatus }) {
@@ -149,7 +216,10 @@ async function getMessages(agentId) {
 
   let stmt;
   if (sess) {
-    stmt = d.prepare('SELECT * FROM messages WHERE agent_id = ? AND (session_id = ? OR session_id IS NULL) ORDER BY created_at ASC');
+    // Only load messages belonging to the current session.
+    // Never fall back to session_id IS NULL — that would leak orphaned legacy
+    // messages back into the conversation after a /clear.
+    stmt = d.prepare('SELECT * FROM messages WHERE agent_id = ? AND session_id = ? ORDER BY created_at ASC');
     stmt.bind([agentId, sess.id]);
   } else {
     stmt = d.prepare('SELECT * FROM messages WHERE agent_id = ? ORDER BY created_at ASC');
