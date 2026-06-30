@@ -59,7 +59,7 @@
   background: #222529;
   border: 1px solid #2d2d30;
   border-radius: 8px;
-  padding: 0 10px 0 12px;
+  padding: 8px 8px 8px 12px;
 }
 
 .message-input-form:focus-within {
@@ -139,7 +139,7 @@
 
 .message-input-field {
   flex: 1;
-  padding: 11px 0;
+  padding: 2px 0;
   border: none;
   background: transparent;
   color: #d1d2d3;
@@ -148,6 +148,7 @@
   font-family: inherit;
   min-width: 0;
   resize: none;
+  overflow: hidden;
   line-height: 1.4;
   max-height: 200px;
 }
@@ -161,15 +162,16 @@
   width: 32px;
   height: 32px;
   border: none;
-  border-radius: 6px;
+  border-radius: 8px;
   background: #007a5a;
   color: #fff;
   cursor: pointer;
-  font-size: 16px;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  align-self: flex-end;
+  margin-bottom: 0;
   transition: background 0.15s;
 }
 
