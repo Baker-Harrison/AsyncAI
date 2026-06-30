@@ -1,4 +1,3 @@
-// @ts-nocheck
 import React, { useState, useEffect, useRef } from 'react';
 import TitleBar from './components/TitleBar';
 import Sidebar from './components/Sidebar';
@@ -105,7 +104,8 @@ function App() {
     const streamingMsgIds: Record<string, string> = {};
 
     // Streaming events from the agent harness
-    agent.onEvent(({ agentId, type, ...payload }) => {
+    agent.onEvent((event: { agentId: string; type: string; [key: string]: unknown }) => {
+      const { agentId, type, ...payload } = event;
       switch (type) {
         case 'thinking':
           setIsThinking(true);
@@ -114,6 +114,7 @@ function App() {
         case 'text-chunk': {
           // Append to the last assistant message (streaming)
           setIsThinking(false);
+          const chunkText = payload.text as string;
           setAgents((prev) =>
             prev.map((a) => {
               if (a.id !== agentId) return a;
@@ -124,14 +125,14 @@ function App() {
                 // Append to existing streaming message
                 msgs[msgs.length - 1] = {
                   ...lastMsg,
-                  text: lastMsg.text + payload.text,
+                  text: lastMsg.text + chunkText,
                 };
               } else {
                 // Start a new streaming message
                 const id = mkId();
                 streamingMsgIds[agentId] = id;
                 msgs.push({
-                  id, role: 'assistant', text: payload.text, time: now(), _streaming: true,
+                  id, role: 'assistant' as const, text: chunkText, time: now(), _streaming: true,
                 });
               }
               return { ...a, messages: msgs };
@@ -142,6 +143,7 @@ function App() {
 
         case 'text':
           setIsThinking(false);
+          const finalText = payload.text as string;
           setAgents((prev) =>
             prev.map((a) => {
               if (a.id !== agentId) return a;
@@ -156,7 +158,7 @@ function App() {
                 delete streamingMsgIds[agentId];
               } else {
                 // Non-streaming fallback: create a new message
-                msgs.push({ id: mkId(), role: 'assistant', text: payload.text, time: now() });
+                msgs.push({ id: mkId(), role: 'assistant' as const, text: finalText, time: now() });
               }
               return { ...a, messages: msgs };
             })
@@ -166,7 +168,9 @@ function App() {
         case 'tool-start': {
           setIsThinking(false);
           const msgId = mkId();
-          toolMsgIds.current[payload.id] = msgId;
+          toolMsgIds.current[payload.id as string] = msgId;
+          const toolName = payload.tool as string;
+          const toolParams = payload.params as Record<string, unknown>;
           // Finalize any streaming message before showing tool
           setAgents((prev) =>
             prev.map((a) => {
@@ -178,7 +182,7 @@ function App() {
                 if (idx >= 0) msgs[idx] = { ...msgs[idx], _streaming: false };
                 delete streamingMsgIds[agentId];
               }
-              msgs.push({ id: msgId, role: 'tool', tool: payload.tool, params: payload.params, output: null, status: 'running' });
+              msgs.push({ id: msgId, role: 'tool' as const, tool: toolName, params: toolParams, output: null, status: 'running' });
               return { ...a, messages: msgs };
             })
           );
@@ -186,14 +190,16 @@ function App() {
         }
 
         case 'tool-done': {
-          const msgId = toolMsgIds.current[payload.id];
-          if (msgId) {
+          const doneMsgId = toolMsgIds.current[payload.id as string];
+          if (doneMsgId) {
+            const doneOutput = payload.output as string | null;
+            const doneStatus = payload.status as string;
             setAgents((prev) =>
               prev.map((a) =>
                 a.id !== agentId ? a : {
                   ...a,
                   messages: a.messages.map((m) =>
-                    m.id !== msgId ? m : { ...m, output: payload.output, status: payload.status }
+                    m.id !== doneMsgId ? m : { ...m, output: doneOutput, status: doneStatus }
                   ),
                 }
               )
@@ -204,11 +210,12 @@ function App() {
 
         case 'error':
           setIsThinking(false);
+          const errMsg = payload.message as string;
           setAgents((prev) =>
             prev.map((a) =>
               a.id !== agentId ? a : {
                 ...a,
-                messages: [...a.messages, { id: mkId(), role: 'system', text: `Error: ${payload.message}`, time: now() }],
+                messages: [...a.messages, { id: mkId(), role: 'system' as const, text: `Error: ${errMsg}`, time: now() }],
               }
             )
           );

@@ -126,6 +126,10 @@ class AgentHarness {
     this._aborted      = false;
 
     this.modelHistory = history.map((m) => JSON.parse(m.model_json));
+    // Tracks whether the final 'text' event was emitted after streaming.
+    // Reset at the start of each streaming call; set to true once emitted
+    // so _loop() doesn't double-emit the full content.
+    this._streamedTextFinalEmitted = false;
   }
 
   async clear() {
@@ -240,10 +244,20 @@ class AgentHarness {
   }
 
   // ── Streaming API call ─────────────────────────────────────────────────
+  //
+  // Makes a streaming request to the LLM API, emitting 'text-chunk' events
+  // as content arrives, and accumulating tool_calls from delta chunks.
+  // On success, returns the assembled message object.
+  // On error, throws so _loop() can fall back or surface the error.
+  //
+  // The _streamedTextFinalEmitted flag prevents _loop() from double-emitting
+  // the full content as a 'text' event (since chunks were already streamed).
 
   async _callModelStream() {
     const apiKey = process.env.OPENCODE_API_KEY;
     if (!apiKey) throw new Error('OPENCODE_API_KEY not set in .env');
+
+    this._streamedTextFinalEmitted = false;
 
     const controller = new AbortController();
     const timer      = setTimeout(() => controller.abort(), FETCH_TIMEOUT);
@@ -264,6 +278,7 @@ class AgentHarness {
         }),
       });
     } catch (e) {
+      clearTimeout(timer);
       if (e.name === 'AbortError') throw new Error(`Request timed out after ${FETCH_TIMEOUT / 1000}s`);
       throw e;
     } finally {
@@ -282,25 +297,42 @@ class AgentHarness {
     // Accumulated results
     let content = '';
     const toolCalls = {}; // index -> { id, type, function: { name, arguments } }
-
-    let parseError = null;
+    let streamError = null;
 
     try {
       while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+        let chunk;
+        try {
+          const { done, value } = await reader.read();
+          if (done) break;
+          chunk = value;
+        } catch (e) {
+          // Stream read error (e.g. network interruption mid-stream)
+          streamError = new Error(`Stream interrupted: ${e.message}`);
+          // Emit whatever content we got so far before failing
+          if (content) {
+            this.onEvent({ type: 'text', text: content });
+            this._streamedTextFinalEmitted = true;
+          }
+          break;
+        }
 
-        buffer += decoder.decode(value, { stream: true });
+        if (this._aborted) {
+          controller.abort();
+          // Emit partial content if we have any
+          if (content) {
+            this.onEvent({ type: 'text', text: content });
+            this._streamedTextFinalEmitted = true;
+          }
+          throw new Error('Aborted');
+        }
+
+        buffer += decoder.decode(chunk, { stream: true });
         const lines = buffer.split('\n');
         // Keep the last potentially incomplete line in buffer
         buffer = lines.pop() || '';
 
         for (const line of lines) {
-          if (this._aborted) {
-            controller.abort();
-            throw new Error('Aborted');
-          }
-
           if (!line.startsWith('data: ')) continue;
           const payload = line.slice(6);
           if (payload === '[DONE]') continue;
@@ -311,13 +343,13 @@ class AgentHarness {
           const choice = parsed.choices?.[0];
           if (!choice) continue;
           if (choice.finish_reason === 'length') {
-            parseError = new Error('Response truncated — try a shorter request');
+            streamError = new Error('Response truncated — try a shorter request');
             break;
           }
 
           const delta = choice.delta || {};
 
-          // Accumulate content
+          // Accumulate and emit text chunks as they arrive
           if (delta.content) {
             content += delta.content;
             this.onEvent({ type: 'text-chunk', text: delta.content });
@@ -337,21 +369,28 @@ class AgentHarness {
           }
         }
 
-        if (parseError) break;
+        if (streamError) break;
       }
     } finally {
-      reader.releaseLock();
+      // Always release the reader lock to prevent resource leaks
+      try { reader.releaseLock(); } catch { /* ignore */ }
     }
 
-    if (parseError) throw parseError;
+    if (streamError) {
+      // If we accumulated partial content, emit it before throwing
+      if (content && !this._streamedTextFinalEmitted) {
+        this.onEvent({ type: 'text', text: content });
+        this._streamedTextFinalEmitted = true;
+      }
+      throw streamError;
+    }
 
-    // Build the final message
+    // Build the final message from accumulated content and tool calls
     const finalToolCalls = Object.values(toolCalls);
 
-    // Emit final text event (the whole content accumulated)
-    if (content) {
-      this._streamedTextFinalEmitted = false; // will be emitted in _loop
-    }
+    // _streamedTextFinalEmitted is left as false so _loop() will emit
+    // the final 'text' event with the complete content.
+    // If we already emitted chunks, _loop() will skip the duplicate.
 
     return {
       msg: {

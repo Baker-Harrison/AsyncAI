@@ -1,4 +1,3 @@
-// @ts-nocheck
 import React, { useState, useRef, useEffect } from 'react';
 import type { Agent } from '../types';
 import './Sidebar.css';

@@ -1,8 +1,12 @@
-// @ts-nocheck
 import React, { useState, useEffect } from 'react';
 import './TitleBar.css';
 
-function TitleBar({ onToggleSidebar, sidebarCollapsed }) {
+interface TitleBarProps {
+  onToggleSidebar: () => void;
+  sidebarCollapsed: boolean;
+}
+
+function TitleBar({ onToggleSidebar, sidebarCollapsed }: TitleBarProps) {
   const [isMaximized, setIsMaximized] = useState(false);
   const [platform, setPlatform] = useState('win32');
 

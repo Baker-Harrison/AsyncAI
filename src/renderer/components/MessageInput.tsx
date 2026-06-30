@@ -1,19 +1,31 @@
-// @ts-nocheck
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import type { FileData } from '../types';
 import './MessageInput.css';
 
-const COMMANDS = [
+interface Command {
+  name: string;
+  description: string;
+}
+
+const COMMANDS: Command[] = [
   { name: '/clear', description: 'Archive this conversation and start a fresh context' },
 ];
 
-function MessageInput({ onSend, onCommand, disabled, placeholder }) {
+interface MessageInputProps {
+  onSend: (text: string, files?: FileData[]) => void;
+  onCommand: (name: string) => void;
+  disabled: boolean;
+  placeholder?: string;
+}
+
+function MessageInput({ onSend, onCommand, disabled, placeholder }: MessageInputProps) {
   const [text, setText]           = useState('');
-  const [suggestions, setSuggestions] = useState([]);
+  const [suggestions, setSuggestions] = useState<Command[]>([]);
   const [selectedIdx, setSelectedIdx] = useState(0);
-  const [files, setFiles]         = useState([]);
+  const [files, setFiles]         = useState<FileData[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
-  const inputRef = useRef(null);
-  const fileInputRef = useRef(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Recompute suggestions whenever text changes
   useEffect(() => {
@@ -27,13 +39,13 @@ function MessageInput({ onSend, onCommand, disabled, placeholder }) {
     }
   }, [text]);
 
-  const executeCommand = (cmd) => {
+  const executeCommand = (cmd: Command) => {
     setText('');
     setSuggestions([]);
     onCommand?.(cmd.name);
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = (e?: React.FormEvent) => {
     e?.preventDefault();
     if (disabled) return;
 
@@ -57,7 +69,7 @@ function MessageInput({ onSend, onCommand, disabled, placeholder }) {
     }
   };
 
-  const handleKeyDown = (e) => {
+  const handleKeyDown = (e: React.KeyboardEvent) => {
     if (suggestions.length > 0) {
       if (e.key === 'ArrowDown') {
         e.preventDefault();
@@ -81,19 +93,20 @@ function MessageInput({ onSend, onCommand, disabled, placeholder }) {
   };
 
   // Auto-resize textarea
-  const handleInput = (e) => {
-    const el = e.target;
+  const handleInput = (e: React.FormEvent<HTMLTextAreaElement>) => {
+    const el = e.currentTarget;
     el.style.height = 'auto';
     el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
   };
 
   // ── File handling ──────────────────────────────────────────────────────
 
-  const readFileAsBase64 = (file) => {
+  const readFileAsBase64 = (file: File): Promise<FileData> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => {
-        const base64 = reader.result.split(',')[1]; // Remove data URL prefix
+        const result = reader.result as string;
+        const base64 = result.split(',')[1]; // Remove data URL prefix
         resolve({ name: file.name, size: file.size, type: file.type, data: base64 });
       };
       reader.onerror = reject;
@@ -101,12 +114,20 @@ function MessageInput({ onSend, onCommand, disabled, placeholder }) {
     });
   };
 
-  const addFiles = useCallback(async (fileList) => {
-    const newFiles = [];
+  const addFiles = useCallback(async (fileList: FileList | File[]) => {
+    const newFiles: FileData[] = [];
     for (let i = 0; i < fileList.length; i++) {
       const file = fileList[i];
+      // Frontend size validation
       if (file.size > 10 * 1024 * 1024) {
         alert(`File "${file.name}" is too large (max 10MB)`);
+        continue;
+      }
+      // Block executable files by MIME type
+      const dangerousPrefixes = ['application/x-msdownload', 'application/vnd.microsoft',
+        'application/x-executable', 'application/x-sharedlib', 'application/x-mach-binary'];
+      if (dangerousPrefixes.some((p) => file.type.startsWith(p))) {
+        alert(`File type "${file.type}" is not allowed for security reasons`);
         continue;
       }
       try {
@@ -119,26 +140,26 @@ function MessageInput({ onSend, onCommand, disabled, placeholder }) {
     setFiles((prev) => [...prev, ...newFiles]);
   }, []);
 
-  const handleFileSelect = (e) => {
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files?.length) {
       addFiles(e.target.files);
     }
     e.target.value = '';
   };
 
-  const handleDragOver = (e) => {
+  const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
     setIsDragOver(true);
   };
 
-  const handleDragLeave = (e) => {
+  const handleDragLeave = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
     setIsDragOver(false);
   };
 
-  const handleDrop = (e) => {
+  const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
     setIsDragOver(false);
@@ -147,7 +168,7 @@ function MessageInput({ onSend, onCommand, disabled, placeholder }) {
     }
   };
 
-  const removeFile = (idx) => {
+  const removeFile = (idx: number) => {
     setFiles((prev) => prev.filter((_, i) => i !== idx));
   };
 

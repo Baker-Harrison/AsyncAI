@@ -1,19 +1,23 @@
-// @ts-nocheck
 import React, { useState, useEffect, useRef } from 'react';
 import './TaskModal.css';
 
-function TaskModal({ onClose, onCreate }) {
+interface TaskModalProps {
+  onClose: () => void;
+  onCreate: (data: { name: string }) => void;
+}
+
+function TaskModal({ onClose, onCreate }: TaskModalProps) {
   const [name, setName] = useState('');
-  const inputRef = useRef(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     inputRef.current?.focus();
-    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onCreate({ name: name.trim() || 'New Agent' });
     onClose();

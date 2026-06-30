@@ -1,21 +1,28 @@
-// @ts-nocheck
 import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
-import { Virtuoso, VirtuosoHandle } from 'react-virtuoso';
+import { Virtuoso } from 'react-virtuoso';
 import ToolCall from './ToolCall';
 import MarkdownRenderer from './MarkdownRenderer';
+import type { Agent } from '../types';
 import './ChatArea.css';
 
-function ChatArea({ agent, isThinking, onNewAgent, onOpenTerminal }) {
+interface ChatAreaProps {
+  agent: Agent | null;
+  isThinking: boolean;
+  onNewAgent: () => void;
+  onOpenTerminal: () => void;
+}
+
+function ChatArea({ agent, isThinking, onNewAgent, onOpenTerminal }: ChatAreaProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const [currentMatchIdx, setCurrentMatchIdx] = useState(0);
-  const searchInputRef = useRef(null);
-  const virtuosoRef = useRef(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const virtuosoRef = useRef<React.ComponentRef<typeof Virtuoso>>(null);
   const [followOutput, setFollowOutput] = useState(true);
 
   // Keyboard shortcut for search
   useEffect(() => {
-    const handler = (e) => {
+    const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
         e.preventDefault();
         setSearchOpen((v) => !v);
@@ -37,22 +44,22 @@ function ChatArea({ agent, isThinking, onNewAgent, onOpenTerminal }) {
     }
   }, [searchOpen]);
 
-  // Find matching messages
-  const matches = useMemo(() => {
+  // Find matching messages — agent might be null so we guard with optional chaining
+  const matches: { idx: number; msg: import('../types').Message; pos: number }[] = useMemo(() => {
     if (!searchQuery || !agent?.messages) return [];
     const q = searchQuery.toLowerCase();
     return agent.messages
       .map((msg, idx) => {
-        const text = msg.text || msg.output || '';
+        const text = (msg.text || msg.output || '') as string;
         const pos = text.toLowerCase().indexOf(q);
-        return pos >= 0 ? { idx, msg, pos } : null;
+        return pos >= 0 ? { idx, msg: msg as import('../types').Message, pos } : null;
       })
-      .filter(Boolean);
+      .filter(Boolean) as { idx: number; msg: import('../types').Message; pos: number }[];
   }, [searchQuery, agent?.messages]);
 
   const currentMatch = matches[currentMatchIdx];
 
-  const navigateMatch = useCallback((dir) => {
+  const navigateMatch = useCallback((dir: number) => {
     if (matches.length === 0) return;
     setCurrentMatchIdx((prev) => {
       const next = prev + dir;
@@ -70,27 +77,17 @@ function ChatArea({ agent, isThinking, onNewAgent, onOpenTerminal }) {
     }
   }, [currentMatch]);
 
-  const handleSearchChange = (e) => {
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchQuery(e.target.value);
     setCurrentMatchIdx(0);
   };
 
   // Stop following output when user scrolls up
-  const handleScroll = useCallback((e) => {
-    const target = e.currentTarget || e;
+  const handleScroll = useCallback((e: React.UIEvent | Event) => {
+    const target = (e.currentTarget || e) as HTMLElement;
     const atBottom = target.scrollTop + target.clientHeight >= target.scrollHeight - 50;
     setFollowOutput(atBottom);
   }, []);
-
-  // Build the items array (messages + thinking indicator)
-  const items = useMemo(() => {
-    if (!agent?.messages) return [];
-    const msgs = agent.messages.map((msg, idx) => ({ type: 'message', msg, idx }));
-    if (isThinking) {
-      msgs.push({ type: 'thinking', idx: msgs.length });
-    }
-    return msgs;
-  }, [agent?.messages, isThinking]);
 
   // No agent selected
   if (!agent) {
@@ -142,7 +139,7 @@ function ChatArea({ agent, isThinking, onNewAgent, onOpenTerminal }) {
     );
   }
 
-  const renderMessage = (idx) => {
+  const renderMessage = (idx: number) => {
     const msg = agent.messages[idx];
     if (!msg) return null;
 
@@ -171,7 +168,8 @@ function ChatArea({ agent, isThinking, onNewAgent, onOpenTerminal }) {
 
     const isAI = msg.role === 'assistant';
     const prevMsg = idx > 0 ? agent.messages[idx - 1] : null;
-    const showAvatar = !prevMsg || prevMsg.role !== msg.role || prevMsg.role === 'tool';
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+    const showAvatar = !prevMsg || (prevMsg as typeof msg).role !== msg.role || (prevMsg as Record<string, string>).role === 'tool';
     const isMatch = currentMatch?.idx === idx;
 
     return (
@@ -271,13 +269,22 @@ function ChatArea({ agent, isThinking, onNewAgent, onOpenTerminal }) {
       )}
 
       <div className="messages-container">
+        {/*
+         * react-virtuoso with overscan of 10 items to prevent layout shift
+         * during fast scrolling. followOutput keeps the viewport pinned to
+         * the bottom when new messages arrive. atBottomThreshold controls
+         * how close to the bottom the user must be for followOutput to stay
+         * active. Messages have variable height (markdown, code blocks, etc.)
+         * so no fixed itemSize is specified — Virtuoso measures dynamically.
+         */}
         <Virtuoso
           ref={virtuosoRef}
           className="messages-virtuoso"
-          totalCount={agent.messages.length}
+          totalCount={agent!.messages.length}
           itemContent={(index) => renderMessage(index)}
           followOutput={followOutput}
           atBottomThreshold={100}
+          overscan={10}
           style={{ height: '100%' }}
           components={{
             Footer: () => isThinking ? (

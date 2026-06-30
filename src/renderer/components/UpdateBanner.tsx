@@ -1,24 +1,25 @@
-// @ts-nocheck
 import React, { useState, useEffect } from 'react';
 import './UpdateBanner.css';
 
+type UpdateState = null | 'available' | 'downloading' | 'ready';
+
 function UpdateBanner() {
-  const [state, setState] = useState(null); // null | 'available' | 'downloading' | 'ready'
+  const [state, setState] = useState<UpdateState>(null);
   const [version, setVersion] = useState('');
   const [percent, setPercent] = useState(0);
 
   useEffect(() => {
     const { update } = window.electronAPI;
-    update.onAvailable(({ version }) => {
-      setVersion(version);
+    update.onAvailable(({ version: v }) => {
+      setVersion(v);
       setState('available');
     });
-    update.onProgress(({ percent }) => {
-      setPercent(percent);
+    update.onProgress(({ percent: p }) => {
+      setPercent(p);
       setState('downloading');
     });
-    update.onDownloaded(({ version }) => {
-      setVersion(version);
+    update.onDownloaded(({ version: v }) => {
+      setVersion(v);
       setState('ready');
     });
   }, []);

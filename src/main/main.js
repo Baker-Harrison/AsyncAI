@@ -171,6 +171,20 @@ ipcMain.handle('agent:create', async (_, { name }) => {
   return { id, name, status: 'starting', messages: [] };
 });
 
+// Max upload size: 10 MB
+const MAX_FILE_SIZE = 10 * 1024 * 1024;
+
+// Allowed MIME type prefixes
+const ALLOWED_MIME_PREFIXES = [
+  'text/', 'image/', 'application/pdf', 'application/json',
+  'application/xml', 'application/zip', 'application/gzip',
+  'application/x-tar', 'application/x-gzip',
+];
+
+function isAllowedMimeType(mimeType) {
+  return ALLOWED_MIME_PREFIXES.some((prefix) => mimeType.startsWith(prefix));
+}
+
 ipcMain.handle('agent:chat', async (_, { agentId, text, files }) => {
   const harness = harnesses.get(agentId);
   if (!harness) throw new Error(`No harness for agent ${agentId}`);
@@ -178,18 +192,46 @@ ipcMain.handle('agent:chat', async (_, { agentId, text, files }) => {
   // If there are files, copy them into the container first
   if (files && files.length > 0) {
     for (const file of files) {
+      // Frontend already validates, but double-check on backend
+      if (file.size > MAX_FILE_SIZE) {
+        throw new Error(`File "${file.name}" exceeds the 10 MB size limit`);
+      }
+
+      // Block executables and random binaries by MIME type
+      if (file.type && !isAllowedMimeType(file.type)) {
+        // Allow if type is empty/unknown (common for text files) but block known dangerous types
+        const dangerousPrefixes = ['application/x-msdownload', 'application/vnd.microsoft',
+          'application/x-executable', 'application/x-sharedlib', 'application/x-mach-binary'];
+        if (dangerousPrefixes.some((p) => file.type.startsWith(p))) {
+          throw new Error(`File type "${file.type}" is not allowed for security reasons`);
+        }
+      }
+
       const destPath = `/home/agent/${file.name}`;
-      // Use docker cp to copy file into container
+      const tempFile = path.join(app.getPath('temp'), `asyncai-${Date.now()}-${file.name}`);
+
       try {
-        const tempFile = path.join(app.getPath('temp'), file.name);
         // Write the base64-decoded content to a temp file, then docker cp it
         const buf = Buffer.from(file.data, 'base64');
         fs.writeFileSync(tempFile, buf);
+
+        // Verify the file actually has content
+        if (buf.length === 0) {
+          throw new Error('File is empty');
+        }
+
         await execFileAsync('docker', ['cp', tempFile, `${containerName(agentId)}:${destPath}`]);
-        fs.unlinkSync(tempFile);
+        console.log(`[agent:chat] uploaded ${file.name} (${buf.length} bytes) to ${destPath}`);
       } catch (e) {
         console.error('[agent:chat] file upload error:', e.message);
         throw new Error(`Failed to upload file ${file.name}: ${e.message}`);
+      } finally {
+        // Always clean up temp file, even on error
+        try {
+          if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
+        } catch (cleanupErr) {
+          console.warn('[agent:chat] failed to clean up temp file:', cleanupErr.message);
+        }
       }
     }
   }
